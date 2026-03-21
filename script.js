@@ -1,6 +1,8 @@
 const CONFIG = {
-    API_KEY: "MYSECRET123", // Should match backend config
-    BACKEND_URL: "", // Empty for relative calls
+    // A secret key to authorize requests to your backend. 
+    // This MUST match the MOVIEHUB_API_KEY environment variable in Vercel.
+    API_KEY: "greenmovies",
+    BACKEND_URL: "",
     IMDB_API: "https://api.imdbapi.dev/search?query="
 };
 
