@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOVIE HUB - Premium Movie Streaming</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">MOVIE HUB</div>
+            <div class="search-container">
+                <input type="text" id="searchInput" placeholder="Search movies (e.g. love action drama)...">
+                <button id="searchButton"><i class="fas fa-search"></i> Search</button>
+            </div>
+        </header>
+
+        <main>
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>Searching for movies...</p>
+            </div>
+
+            <div id="results-container" class="hidden">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Poster</th>
+                            <th>Details</th>
+                            <th>Download</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                        <!-- Results will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="no-results" class="hidden">
+                <i class="fas fa-film"></i>
+                <p>No movies found. Try another search!</p>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 Movie Hub - High Quality Content</p>
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.session
+*.log
+.env
+test_mongo.py
+moviehub_bot.session
