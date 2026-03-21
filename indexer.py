@@ -4,6 +4,7 @@ from pyrogram import Client
 from pymongo import MongoClient
 import config
 import time
+import os
 
 # MongoDB Setup
 try:
@@ -18,17 +19,18 @@ except Exception as e:
     db = client.moviehub
 movies_collection = db.movies
 
-# Pyrogram Client Setup
-import os
-is_vercel = os.getenv("VERCEL") == "1"
-session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
+def get_client():
+    is_vercel = os.getenv("VERCEL") == "1"
+    session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
+    return Client(
+        session_name,
+        api_id=config.TELEGRAM_API_ID,
+        api_hash=config.TELEGRAM_API_HASH,
+        bot_token=config.TELEGRAM_BOT_TOKEN
+    )
 
-app = Client(
-    session_name,
-    api_id=config.TELEGRAM_API_ID,
-    api_hash=config.TELEGRAM_API_HASH,
-    bot_token=config.TELEGRAM_BOT_TOKEN
-)
+# Global client (will be initialized in main)
+app = None
 
 def clean_title(filename):
     """
@@ -197,12 +199,25 @@ def update_default_quality(movie_id):
         {"$set": {"files": files}}
     )
 
-@app.on_message()
+# Remove the decorator, we will use add_handler instead
 async def handle_message(client, message):
-    """Handles search queries from users."""
+    """Handles search queries or forwarded messages for indexing."""
+    # 1. Check for forwarded messages (to start indexing)
+    if message.forward_from_chat:
+        chat = message.forward_from_chat
+        await message.reply_text(f"Detected forward from: **{chat.title}** (ID: `{chat.id}`)\nAttempting to index history...")
+        try:
+            # We run this in the background/async so it doesn't block other messages
+            asyncio.create_task(index_channel(chat.id, limit=1000))
+            await message.reply_text("Indexing started in the background. I'll search for video files.")
+        except Exception as e:
+            await message.reply_text(f"Failed to start indexing: {e}")
+        return
+
+    # 2. Handle search queries
     if not message.text or message.text.startswith('/'):
         if message.text == "/start":
-            await message.reply_text("Welcome to MOVIE HUB! Send me a movie name to search.")
+            await message.reply_text("Welcome to MOVIE HUB! \n\n1. Send me a movie name to search.\n2. **Forward a message from a channel** to start indexing its files!")
         return
 
     query = message.text
@@ -218,8 +233,6 @@ async def handle_message(client, message):
     for movie in results:
         response_text += f"🎬 **{movie['title']}** ({movie.get('year', 'N/A')})\n"
         for f in movie.get('files', []):
-            # Since bot can't send direct links to file_ids for download easily via HTTP 
-            # without a bot browser or a specialized bot flow, we just list them.
             response_text += f"  └ {f['quality']} - {f['size']}\n"
         response_text += "\n"
     
@@ -228,35 +241,52 @@ async def handle_message(client, message):
 async def index_channel(chat_id, limit=None, offset_id=0):
     """Indexes full channel history or range."""
     count = 0
-    async with app:
-        async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
-            if message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
-                process_message(message)
-                count += 1
+    async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
+        if message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
+            process_message(message)
+            count += 1
     print(f"Indexing complete. Processed {count} messages.")
 
-if __name__ == "__main__":
-    import asyncio
-    # For manual testing/command line usage
-    # usage: python indexer.py <chat_id> [limit] [offset_id]
+async def main():
     import sys
+    global app
+    
+    # 1. Validate configuration
+    required = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_API_ID", "TELEGRAM_API_HASH", "MONGO_URI"]
+    missing = [var for var in required if not getattr(config, var, None)]
+    
+    if missing:
+        print(f"CRITICAL ERROR: Missing environment variables: {', '.join(missing)}")
+        sys.exit(1)
+
+    # 2. Initialize app inside the loop
+    app = get_client()
+    
+    # 3. Register handlers
+    from pyrogram.handlers import MessageHandler
+    app.add_handler(MessageHandler(handle_message))
+
+    # 4. Handle command line arguments
     if len(sys.argv) > 1:
         chat = sys.argv[1]
         lim = int(sys.argv[2]) if len(sys.argv) > 2 else None
         off = int(sys.argv[3]) if len(sys.argv) > 3 else 0
-        asyncio.run(index_channel(chat, lim, off))
-    else:
-        # Validate configuration before starting
-        required = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_API_ID", "TELEGRAM_API_HASH", "MONGO_URI"]
-        missing = [var for var in required if not getattr(config, var, None)]
         
-        if missing:
-            print(f"CRITICAL ERROR: Missing environment variables: {', '.join(missing)}")
-            print("Please set them in your environment or a .env file.")
-            sys.exit(1)
-
+        async with app:
+            print(f"Starting indexing for {chat}...")
+            await index_channel(chat, lim, off)
+    else:
         print("Bot started. Listening for messages...")
-        try:
-            app.run()
-        except Exception as e:
-            print(f"Bot failed to start: {e}")
+        await app.start()
+        from pyrogram import idle
+        await idle()
+        await app.stop()
+
+if __name__ == "__main__":
+    import asyncio
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"Fatal Error: {e}")
