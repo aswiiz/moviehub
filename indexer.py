@@ -202,6 +202,10 @@ def update_default_quality(movie_id):
 # Remove the decorator, we will use add_handler instead
 async def handle_message(client, message):
     """Handles search queries or forwarded messages for indexing."""
+    print(f"DEBUG: Received message from {message.from_user.id if message.from_user else 'Unknown'}: {message.text or '[No Text]'}")
+    if message.forward_from_chat:
+        print(f"DEBUG: Message is FORWARDED from {message.forward_from_chat.id} ({message.forward_from_chat.title})")
+    
     # 1. Check for forwarded messages (to start indexing)
     if message.forward_from_chat:
         chat = message.forward_from_chat
