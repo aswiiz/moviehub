@@ -13,9 +13,8 @@ MONGO_URI = os.getenv("MONGO_URI", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
 # Telegram API ID and Hash for Userbot (Pyrogram)
-TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", "")
-if TELEGRAM_API_ID:
-    TELEGRAM_API_ID = int(TELEGRAM_API_ID)
+raw_api_id = os.getenv("TELEGRAM_API_ID", "")
+TELEGRAM_API_ID = int(raw_api_id) if raw_api_id and raw_api_id.isdigit() else 0
 
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 

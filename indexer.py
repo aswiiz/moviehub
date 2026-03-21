@@ -6,12 +6,15 @@ import config
 import time
 
 # MongoDB Setup
-client = MongoClient(config.MONGO_URI)
 try:
-    # Try to get database from URI
-    db = client.get_default_database()
-except Exception:
-    # Fallback to 'moviehub' if not specified in URI
+    client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=5000)
+    # Ping to check if host is valid
+    client.admin.command('ping')
+    db = client.get_database()
+except Exception as e:
+    print(f"MongoDB Configuration Error: {e}")
+    # Fallback/Dummy for initialization
+    client = MongoClient() 
     db = client.moviehub
 movies_collection = db.movies
 
