@@ -16,8 +16,12 @@ except Exception:
 movies_collection = db.movies
 
 # Pyrogram Client Setup
+import os
+is_vercel = os.getenv("VERCEL") == "1"
+session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
+
 app = Client(
-    "moviehub_bot",
+    session_name,
     api_id=config.TELEGRAM_API_ID,
     api_hash=config.TELEGRAM_API_HASH,
     bot_token=config.TELEGRAM_BOT_TOKEN

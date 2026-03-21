@@ -18,8 +18,12 @@ db = client.get_database()
 movies_collection = db.movies
 
 # Pyrogram Client for Streaming
+# Vercel needs sessions in /tmp as the filesystem is read-only
+is_vercel = os.getenv("VERCEL") == "1"
+session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
+
 pyro_app = Client(
-    "moviehub_bot",
+    session_name,
     api_id=config.TELEGRAM_API_ID,
     api_hash=config.TELEGRAM_API_HASH,
     bot_token=config.TELEGRAM_BOT_TOKEN
