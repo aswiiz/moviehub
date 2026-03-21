@@ -245,18 +245,27 @@ async def handle_message(client, message):
 async def index_channel(chat_id, limit=None, offset_id=0):
     """Indexes full channel history or range."""
     count = 0
-    async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
-        if message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
-            process_message(message)
-            count += 1
-    print(f"Indexing complete. Processed {count} messages.")
-    
-    # Notify admin if possible
-    if config.ADMIN_ID:
-        try:
-            await app.send_message(config.ADMIN_ID, f"✅ Indexing complete for ID: `{chat_id}`\nProcessed: **{count}** files.")
-        except Exception as e:
-            print(f"Failed to notify admin: {e}")
+    print(f"DEBUG: Starting index_channel for {chat_id}")
+    try:
+        async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
+            if message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
+                process_message(message)
+                count += 1
+                if count % 10 == 0:
+                    print(f"Progress: Indexed {count} files...")
+        
+        print(f"Indexing complete. Processed {count} messages.")
+        
+        # Notify admin if possible
+        if config.ADMIN_ID:
+            try:
+                await app.send_message(config.ADMIN_ID, f"✅ Indexing complete for ID: `{chat_id}`\nProcessed: **{count}** files.")
+            except Exception as e:
+                print(f"Failed to notify admin: {e}")
+    except Exception as e:
+        print(f"Error during indexing {chat_id}: {e}")
+        if config.ADMIN_ID:
+            await app.send_message(config.ADMIN_ID, f"❌ Error during indexing: {e}")
 
 async def main():
     import sys
