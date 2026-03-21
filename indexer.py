@@ -194,6 +194,34 @@ def update_default_quality(movie_id):
         {"$set": {"files": files}}
     )
 
+@app.on_message()
+async def handle_message(client, message):
+    """Handles search queries from users."""
+    if not message.text or message.text.startswith('/'):
+        if message.text == "/start":
+            await message.reply_text("Welcome to MOVIE HUB! Send me a movie name to search.")
+        return
+
+    query = message.text
+    results = list(movies_collection.find({
+        "title": {"$regex": f".*{re.escape(query)}.*", "$options": "i"}
+    }).limit(10))
+
+    if not results:
+        await message.reply_text("No movies found for your search.")
+        return
+
+    response_text = f"🔍 Search results for: **{query}**\n\n"
+    for movie in results:
+        response_text += f"🎬 **{movie['title']}** ({movie.get('year', 'N/A')})\n"
+        for f in movie.get('files', []):
+            # Since bot can't send direct links to file_ids for download easily via HTTP 
+            # without a bot browser or a specialized bot flow, we just list them.
+            response_text += f"  └ {f['quality']} - {f['size']}\n"
+        response_text += "\n"
+    
+    await message.reply_text(response_text)
+
 async def index_channel(chat_id, limit=None, offset_id=0):
     """Indexes full channel history or range."""
     count = 0
@@ -215,4 +243,5 @@ if __name__ == "__main__":
         off = int(sys.argv[3]) if len(sys.argv) > 3 else 0
         asyncio.run(index_channel(chat, lim, off))
     else:
-        print("Usage: python indexer.py <chat_id> [limit] [offset_id]")
+        print("Bot started. Listening for messages...")
+        app.run()

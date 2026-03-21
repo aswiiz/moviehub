@@ -9,7 +9,7 @@ import re
 import asyncio
 import os
 
-app = Flask(__name__, static_folder='.', template_folder='.')
+app = Flask(__name__)
 CORS(app)
 
 # MongoDB Setup
