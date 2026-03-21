@@ -210,6 +210,10 @@ async def handle_message(client, message):
             # We run this in the background/async so it doesn't block other messages
             asyncio.create_task(index_channel(chat.id, limit=1000))
             await message.reply_text("Indexing started in the background. I'll search for video files.")
+            
+            # Notify admin
+            if config.ADMIN_ID:
+                await client.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nChannel: {chat.title}\nID: `{chat.id}`\nTriggered by: {message.from_user.first_name}")
         except Exception as e:
             await message.reply_text(f"Failed to start indexing: {e}")
         return
@@ -246,6 +250,13 @@ async def index_channel(chat_id, limit=None, offset_id=0):
             process_message(message)
             count += 1
     print(f"Indexing complete. Processed {count} messages.")
+    
+    # Notify admin if possible
+    if config.ADMIN_ID:
+        try:
+            await app.send_message(config.ADMIN_ID, f"✅ Indexing complete for ID: `{chat_id}`\nProcessed: **{count}** files.")
+        except Exception as e:
+            print(f"Failed to notify admin: {e}")
 
 async def main():
     import sys

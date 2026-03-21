@@ -21,5 +21,10 @@ TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 # IMDb API URL
 IMDB_API_URL = "https://api.imdbapi.dev/search?query="
 
+# Admin Telegram ID for notifications
+ADMIN_ID = os.getenv("ADMIN_ID", "")
+if ADMIN_ID:
+    ADMIN_ID = int(ADMIN_ID)
+
 # Simple API Key Protection
 API_KEY = os.getenv("MOVIEHUB_API_KEY", "CHANGEME")
