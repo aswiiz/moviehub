@@ -246,5 +246,17 @@ if __name__ == "__main__":
         off = int(sys.argv[3]) if len(sys.argv) > 3 else 0
         asyncio.run(index_channel(chat, lim, off))
     else:
+        # Validate configuration before starting
+        required = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_API_ID", "TELEGRAM_API_HASH", "MONGO_URI"]
+        missing = [var for var in required if not getattr(config, var, None)]
+        
+        if missing:
+            print(f"CRITICAL ERROR: Missing environment variables: {', '.join(missing)}")
+            print("Please set them in your environment or a .env file.")
+            sys.exit(1)
+
         print("Bot started. Listening for messages...")
-        app.run()
+        try:
+            app.run()
+        except Exception as e:
+            print(f"Bot failed to start: {e}")
