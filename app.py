@@ -13,8 +13,14 @@ app = Flask(__name__)
 CORS(app)
 
 # MongoDB Setup
-client = MongoClient(config.MONGO_URI)
-db = client.get_database()
+try:
+    client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=5000)
+    client.admin.command('ping')
+    db = client.get_database()
+except Exception as e:
+    print(f"MongoDB Configuration Error: {e}")
+    client = MongoClient()
+    db = client.moviehub
 movies_collection = db.movies
 
 # Pyrogram Client for Streaming
