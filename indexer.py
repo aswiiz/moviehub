@@ -22,11 +22,22 @@ movies_collection = db.movies
 def get_client():
     is_vercel = os.getenv("VERCEL") == "1"
     session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
+    
+    # Check for bot token vs user account
+    bot_token = config.TELEGRAM_BOT_TOKEN
+    if not bot_token or bot_token == "CHANGEME":
+        print("NOTE: No Bot Token found. Switching to USERBOT mode (interactive login).")
+        return Client(
+            session_name,
+            api_id=config.TELEGRAM_API_ID,
+            api_hash=config.TELEGRAM_API_HASH
+        )
+    
     return Client(
         session_name,
         api_id=config.TELEGRAM_API_ID,
         api_hash=config.TELEGRAM_API_HASH,
-        bot_token=config.TELEGRAM_BOT_TOKEN
+        bot_token=bot_token
     )
 
 # Global client (will be initialized in main)
@@ -297,13 +308,27 @@ async def index_channel(chat_id, limit=None, offset_id=0):
         if config.ADMIN_ID:
             await app.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nTarget: `{chat_id}`\nMethod: Batch Retrieval")
 
-        # Use our new batch iterator
-        async for message in iter_messages(chat_id, limit=limit, offset=offset_id):
-            if message and not message.empty and message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
-                process_message(message)
-                count += 1
-                if count % 20 == 0:
-                    print(f"Progress: Indexed {count} files...")
+        # Use our new batch iterator IF it's a bot, otherwise standard crawl is fine
+        is_bot = await app.get_me().then(lambda me: me.is_bot) if hasattr(app, 'get_me') else True
+        # Simplified check for bot vs user
+        me = await app.get_me()
+        
+        if me.is_bot:
+            print(f"INFO: Running as BOT (@{me.username}). Using batch retrieval.")
+            async for message in iter_messages(chat_id, limit=limit, offset=offset_id):
+                if message and not message.empty and message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
+                    process_message(message)
+                    count += 1
+                    if count % 20 == 0:
+                        print(f"Progress: Indexed {count} files...")
+        else:
+            print(f"INFO: Running as USER ({me.first_name}). Using standard history crawl.")
+            async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
+                if message and not message.empty and message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
+                    process_message(message)
+                    count += 1
+                    if count % 20 == 0:
+                        print(f"Progress: Indexed {count} files...")
         
         print(f"Indexing complete. Processed {count} files.")
         
@@ -339,12 +364,20 @@ async def main():
 
     # 4. Handle command line arguments
     if len(sys.argv) > 1:
+        # Example: python3 indexer.py -100123456789 1000
         chat = sys.argv[1]
+        try:
+            # Try to convert to int if it looks like an ID
+            if chat.startswith("-100") or chat.isdigit():
+                chat = int(chat)
+        except:
+            pass
+            
         lim = int(sys.argv[2]) if len(sys.argv) > 2 else None
         off = int(sys.argv[3]) if len(sys.argv) > 3 else 0
         
         async with app:
-            print(f"Starting indexing for {chat}...")
+            print(f"Starting DIRECT indexing for {chat}...")
             await index_channel(chat, lim, off)
     else:
         print("Bot started. Listening for messages...")
