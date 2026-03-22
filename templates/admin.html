@@ -138,6 +138,35 @@
         .hidden {
             display: none;
         }
+
+        .movie-repo-list {
+            margin-top: 1rem;
+        }
+
+        .movie-repo-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 0.8rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .movie-repo-item:hover {
+            border-color: var(--accent);
+        }
+
+        .movie-repo-info h3 {
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+
+        .movie-repo-info p {
+            font-size: 0.8rem;
+            opacity: 0.5;
+        }
     </style>
 </head>
 
@@ -215,6 +244,15 @@
             <p style="font-size: 0.8rem; opacity: 0.5; margin-bottom: 15px;">Bot must be admin in private channels. This
                 will crawl the latest messages.</p>
             <button onclick="triggerIndex()" style="width: 100%;">Launch Indexing Task</button>
+        </section>
+
+        <section>
+            <h2>📚 Movie Repository</h2>
+            <div id="movie-repository" class="movie-repo-list">
+                <!-- Movies will be loaded here -->
+            </div>
+            <button id="load-more-btn" onclick="loadMoreMovies()" style="width: 100%; margin-top: 15px;"
+                class="btn-secondary">Load More</button>
         </section>
     </div>
 
@@ -356,7 +394,46 @@
                 });
         }
 
-        if (localStorage.getItem('admin_token')) showDashboard();
+        let currentPage = 1;
+        function loadMovies() {
+            fetch(`/api/admin/movies?page=${currentPage}&key=${API_KEY}`)
+                .then(res => res.json())
+                .then(data => {
+                    const repo = document.getElementById('movie-repository');
+                    if (data.length === 0) {
+                        if (currentPage === 1) repo.innerHTML = "<p style='opacity: 0.5;'>No movies in database yet.</p>";
+                        document.getElementById('load-more-btn').style.display = 'none';
+                        return;
+                    }
+
+                    const html = data.map(m => `
+                        <div class="movie-repo-item">
+                            <div class="movie-repo-info">
+                                <h3>${m.title}</h3>
+                                <p>Year: ${m.year || 'N/A'} | ID: ${m._id}</p>
+                            </div>
+                            <button onclick="copyID('${m._id}')" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem;">Pick</button>
+                        </div>
+                    `).join('');
+
+                    if (currentPage === 1) repo.innerHTML = html;
+                    else repo.innerHTML += html;
+
+                    if (data.length < 20) {
+                        document.getElementById('load-more-btn').style.display = 'none';
+                    }
+                });
+        }
+
+        function loadMoreMovies() {
+            currentPage++;
+            loadMovies();
+        }
+
+        if (localStorage.getItem('admin_token')) {
+            showDashboard();
+            loadMovies();
+        }
     </script>
 </body>
 

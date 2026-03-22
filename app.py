@@ -305,6 +305,22 @@ def get_stats():
         "channels": ["Main Index Channel"] # Placeholder
     })
 
+@app.route('/api/admin/movies', methods=['GET'])
+@require_api_key
+def get_admin_movies():
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 20, type=int)
+    skip = (page - 1) * limit
+
+    results = movies_collection.find().sort("title", 1).skip(skip).limit(limit)
+    
+    movies = []
+    for m in results:
+        m['_id'] = str(m['_id'])
+        movies.append(m)
+        
+    return jsonify(movies)
+
 @app.route('/admin')
 def admin_page():
     return render_template('admin.html')
