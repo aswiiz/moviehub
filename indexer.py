@@ -395,13 +395,12 @@ async def index_channel(chat_id, limit=None, offset_id=0):
         if config.ADMIN_ID:
             await app.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nTarget: `{chat_id}`\nMethod: Batch Retrieval")
 
-        # Use our new batch iterator IF it's a bot, otherwise standard crawl is fine
-        is_bot = await app.get_me().then(lambda me: me.is_bot) if hasattr(app, 'get_me') else True
-        # Simplified check for bot vs user
+        # 2. Check if client is bot vs user
         me = await app.get_me()
+        is_bot = me.is_bot if me else True
         
-        if me.is_bot:
-            print(f"INFO: Running as BOT (@{me.username}). Using batch retrieval.")
+        if is_bot:
+            print(f"INFO: Running as BOT (@{getattr(me, 'username', 'Unknown')}). Using batch retrieval.")
             async for message in iter_messages(chat_id, limit=limit, offset=offset_id):
                 if message and not message.empty:
                     if message.document or message.video or message.audio:
