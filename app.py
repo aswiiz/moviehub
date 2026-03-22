@@ -8,6 +8,7 @@ import config
 import re
 import asyncio
 import os
+import indexer  # Import our indexing logic
 
 app = Flask(__name__)
 CORS(app)
@@ -120,6 +121,50 @@ def download(movie_id, quality):
 
     except Exception as e:
         return jsonify({"error": "Internal Error", "message": str(e)}), 500
+
+@app.route('/index', methods=['GET'])
+@require_api_key
+def trigger_index():
+    chat_id = request.args.get('chat_id')
+    limit = request.args.get('limit', type=int, default=100)
+    
+    if not chat_id:
+        return jsonify({"error": "Bad Request", "message": "chat_id is required"}), 400
+
+    try:
+        # We need to use a separate pyro client for indexing to avoid conflict with streaming
+        # but in serverless, we can just start/stop as needed.
+        async def run_indexing():
+            if not pyro_app.is_connected:
+                await pyro_app.start()
+            
+            # Use the refined indexing function from indexer
+            # We pass the shared movies_collection
+            count = 0
+            # Note: We use a smaller limit for Vercel to avoid timeouts
+            safe_limit = min(limit, 200) 
+            
+            # We slightly modify index_channel logic here to be more 'inline'
+            # Or just call the function if it's compatible
+            from indexer import iter_messages, process_message
+            async for message in iter_messages(chat_id, limit=safe_limit):
+                if message and not message.empty and message.document:
+                     process_message(message)
+                     count += 1
+            return count
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        processed_count = loop.run_until_complete(run_indexing())
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Indexed {processed_count} files from {chat_id}",
+            "count": processed_count
+        })
+
+    except Exception as e:
+        return jsonify({"error": "Indexing Failed", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
