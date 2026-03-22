@@ -408,6 +408,11 @@ async def index_channel(chat_id, limit=None, offset_id=0):
                         count += 1
                         if count % 20 == 0:
                             print(f"Progress: Indexed {count} files...")
+                        
+                        if count % 100 == 0 and config.ADMIN_ID:
+                            try:
+                                await app.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
+                            except: pass
         else:
             print(f"INFO: Running as USER ({me.first_name}). Using standard history crawl.")
             async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
@@ -417,6 +422,11 @@ async def index_channel(chat_id, limit=None, offset_id=0):
                         count += 1
                         if count % 20 == 0:
                             print(f"Progress: Indexed {count} files...")
+                        
+                        if count % 100 == 0 and config.ADMIN_ID:
+                            try:
+                                await app.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
+                            except: pass
         
         print(f"Indexing complete. Processed {count} files.")
         
