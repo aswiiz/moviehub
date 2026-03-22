@@ -7,6 +7,11 @@ const CONFIG = {
 };
 
 // Initialize
+const searchInput = document.getElementById('searchInput');
+const resultsContainerDiv = document.getElementById('results-container');
+const loadingDiv = document.getElementById('loading');
+const resultsBody = document.getElementById('resultsBody');
+
 document.addEventListener('DOMContentLoaded', () => {
     loadHighlights();
 });

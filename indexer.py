@@ -216,6 +216,9 @@ async def iter_messages(chat_id, limit, offset=0):
     Works backwards from the latest message if offset is 0.
     """
     try:
+        if app is None:
+            raise Exception("Indexer client 'app' is not initialized. Please set indexer.app before calling.")
+        
         # Get the latest message ID first
         chat = await app.get_chat(chat_id)
         last_id = chat.last_message_id

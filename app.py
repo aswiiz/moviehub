@@ -156,6 +156,10 @@ def trigger_index():
             # Note: We use a smaller limit for Vercel to avoid timeouts
             safe_limit = min(limit, 200) 
             
+            # Initialize indexer.app
+            import indexer
+            indexer.app = pyro_app
+            
             # We slightly modify index_channel logic here to be more 'inline'
             # Or just call the function if it's compatible
             from indexer import iter_messages, process_message
