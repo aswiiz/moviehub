@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Movie Hub</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        .admin-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .card-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.8rem;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        button {
+            cursor: pointer;
+            transition: 0.3s;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-weight: 600;
+        }
+
+        button:hover {
+            opacity: 0.8;
+        }
+
+        #login-form {
+            max-width: 400px;
+            margin: 100px auto;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .highlight-item {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="login-section" class="admin-container">
+        <h1>Admin Login</h1>
+        <div id="login-form">
+            <div class="input-group"><input type="text" id="username" placeholder="Username"></div>
+            <div class="input-group"><input type="password" id="password" placeholder="Password"></div>
+            <button onclick="adminLogin()">Login</button>
+        </div>
+    </div>
+
+    <div id="admin-section" class="admin-container hidden">
+        <h1>Admin Dashboard</h1>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div>Total Movies</div>
+                <div id="stat-movies" class="card-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div>DB Size</div>
+                <div id="stat-size" class="card-value">0 MB</div>
+            </div>
+            <div class="stat-card">
+                <div>Channels</div>
+                <div id="stat-channels" class="card-value">0</div>
+            </div>
+        </div>
+
+        <section>
+            <h2>Manage Highlights (Max 3)</h2>
+            <div id="highlight-inputs">
+                <div class="highlight-item"><input type="text" class="movie-id" placeholder="Movie ID 1"></div>
+                <div class="highlight-item"><input type="text" class="movie-id" placeholder="Movie ID 2"></div>
+                <div class="highlight-item"><input type="text" class="movie-id" placeholder="Movie ID 3"></div>
+            </div>
+            <button onclick="saveHighlights()">Save Highlights</button>
+        </section>
+
+        <section style="margin-top: 2rem;">
+            <h2>Quick Index</h2>
+            <div class="input-group"><input type="text" id="index-chat-id" placeholder="Channel ID (-100...)"></div>
+            <button onclick="triggerIndex()">Start Indexing</button>
+        </section>
+
+        <button onclick="logout()" style="margin-top: 2rem; background: #ff4444;">Logout</button>
+    </div>
+
+    <script>
+        const API_KEY = "greenmovies"; // Injected or set globally
+
+        function adminLogin() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: u, password: p })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        localStorage.setItem('admin_token', data.token);
+                        showDashboard();
+                    } else alert(data.message);
+                });
+        }
+
+        function logout() {
+            localStorage.removeItem('admin_token');
+            location.reload();
+        }
+
+        function showDashboard() {
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('admin-section').classList.remove('hidden');
+            loadStats();
+        }
+
+        function loadStats() {
+            fetch(`/api/admin/stats?key=${API_KEY}`)
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('stat-movies').innerText = data.total_movies;
+                    document.getElementById('stat-size').innerText = data.db_size;
+                    document.getElementById('stat-channels').innerText = data.channels.length;
+                });
+
+            fetch('/api/highlights')
+                .then(res => res.json())
+                .then(data => {
+                    const inputs = document.querySelectorAll('.movie-id');
+                    data.forEach((m, i) => { if (inputs[i]) inputs[i].value = m._id; });
+                });
+        }
+
+        function saveHighlights() {
+            const ids = Array.from(document.querySelectorAll('.movie-id')).map(i => i.value).filter(v => v.trim() !== "");
+            fetch(`/api/admin/highlights?key=${API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ movie_ids: ids })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') alert("Highlights updated!");
+                    else alert(data.error);
+                });
+        }
+
+        function triggerIndex() {
+            const chatId = document.getElementById('index-chat-id').value;
+            if (!chatId) return alert("Enter Channel ID");
+            fetch(`/index?chat_id=${chatId}&limit=100&key=${API_KEY}`)
+                .then(res => res.json())
+                .then(data => alert(data.message || data.error));
+        }
+
+        if (localStorage.getItem('admin_token')) showDashboard();
+    </script>
+</body>
+
+</html>

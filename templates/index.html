@@ -14,11 +14,16 @@
     <div class="container">
         <header>
             <div class="logo">MOVIE HUB</div>
-            <div class="search-container">
-                <input type="text" id="searchInput" placeholder="Search movies (e.g. love action drama)...">
-                <button id="searchButton"><i class="fas fa-search"></i> Search</button>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search for movies, series...">
+                <button onclick="searchMovies()">Search</button>
             </div>
         </header>
+
+        <div id="highlights-section" class="highlights-container hidden">
+            <h2>✨ Trending Now</h2>
+            <div id="highlights-grid" class="highlights-grid"></div>
+        </div>
 
         <main>
             <div id="loading" class="hidden">
@@ -48,7 +53,12 @@
         </main>
 
         <footer>
-            <p>&copy; 2026 Movie Hub - High Quality Content</p>
+            <p>&copy; 2026 MOVIE HUB - All Rights Reserved</p>
+            <div style="margin-top: 10px;">
+                <a href="/admin"
+                    style="color: var(--accent); text-decoration: none; font-size: 0.8rem; opacity: 0.6;">Admin
+                    Login</a>
+            </div>
         </footer>
     </div>
     <script src="/static/script.js"></script>

@@ -6,20 +6,42 @@ const CONFIG = {
     IMDB_API: "https://api.imdbapi.dev/search?query="
 };
 
-const searchInput = document.getElementById('searchInput');
-const searchButton = document.getElementById('searchButton');
-const resultsTable = document.getElementById('resultsTable');
-const resultsBody = document.getElementById('resultsBody');
-const resultsContainerDiv = document.getElementById('results-container');
-const loadingDiv = document.getElementById('loading');
-const noResultsDiv = document.getElementById('no-results');
-
-searchButton.addEventListener('click', performSearch);
-searchInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') performSearch();
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    loadHighlights();
 });
 
-async function performSearch() {
+const noResultsDiv = document.getElementById('no-results');
+
+searchInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') searchMovies();
+});
+
+async function loadHighlights() {
+    try {
+        const response = await fetch('/api/highlights');
+        const movies = await response.json();
+
+        const section = document.getElementById('highlights-section');
+        const grid = document.getElementById('highlights-grid');
+
+        if (movies && movies.length > 0) {
+            section.classList.remove('hidden');
+            grid.innerHTML = movies.map(movie => `
+                <div class="highlight-card" onclick="location.hash='#${movie._id}'">
+                    <img src="${movie.poster || 'https://via.placeholder.com/300x450?text=No+Poster'}" alt="${movie.title}">
+                    <div class="highlight-info">${movie.title} (${movie.year || 'N/A'})</div>
+                </div>
+            `).join('');
+        } else {
+            section.classList.add('hidden');
+        }
+    } catch (error) {
+        console.error("Error loading highlights:", error);
+    }
+}
+
+async function searchMovies() {
     const query = searchInput.value.trim();
     if (!query) return;
 
@@ -56,6 +78,7 @@ async function performSearch() {
 
 async function createMovieRow(movie) {
     const tr = document.createElement('tr');
+    tr.id = movie._id;
 
     // Fetch poster
     let posterUrl = 'https://via.placeholder.com/100x150?text=No+Poster';

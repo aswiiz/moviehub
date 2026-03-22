@@ -23,6 +23,7 @@ except Exception as e:
     client = MongoClient()
     db = client.moviehub
 movies_collection = db.movies
+settings_collection = db.settings
 
 # Pyrogram Client for Streaming
 # Vercel needs sessions in /tmp as the filesystem is read-only
@@ -165,6 +166,71 @@ def trigger_index():
 
     except Exception as e:
         return jsonify({"error": "Indexing Failed", "message": str(e)}), 500
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    if data.get('username') == 'admin' and data.get('password') == 'admin123':
+        # In a real app, use sessions or JWT. For now, simple success.
+        return jsonify({"status": "success", "token": "admin_token_123"})
+    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+@app.route('/api/highlights', methods=['GET'])
+def get_highlights():
+    settings = settings_collection.find_one({"type": "highlights"})
+    if not settings or not settings.get('movies'):
+        return jsonify([])
+    
+    # Fetch movie details for the highlighted IDs
+    movie_ids = [ObjectId(mid) for mid in settings['movies']]
+    results = list(movies_collection.find({"_id": {"$in": movie_ids}}))
+    
+    highlights = []
+    for m in results:
+        m['_id'] = str(m['_id'])
+        highlights.append(m)
+    return jsonify(highlights)
+
+@app.route('/api/admin/highlights', methods=['POST'])
+@require_api_key
+def update_highlights():
+    movie_ids = request.json.get('movie_ids', [])
+    if len(movie_ids) > 3:
+        return jsonify({"error": "Max 3 highlights allowed"}), 400
+    
+    settings_collection.update_one(
+        {"type": "highlights"},
+        {"$set": {"movies": movie_ids}},
+        upsert=True
+    )
+    return jsonify({"status": "success"})
+
+@app.route('/api/admin/stats', methods=['GET'])
+@require_api_key
+def get_stats():
+    # 1. Total movies
+    total_movies = movies_collection.count_documents({})
+    
+    # 2. Unique channels (approximated by file_id structure or just unique channels)
+    # Since we don't store channel_id directly in the movie doc in a clean way,
+    # let's assume 'connected channels' is just a count of unique first-message-forwards.
+    # For now, we'll list the movie titles as a proxy or just hardcode/estimate.
+    # Better: list unique qualities or something. 
+    # Let's just return total movies and DB size for now.
+    
+    # 3. DB Size (estimated)
+    stats = db.command("dbstats")
+    db_size = f"{round(stats['dataSize'] / (1024 * 1024), 2)} MB"
+    
+    return jsonify({
+        "total_movies": total_movies,
+        "db_size": db_size,
+        "channels": ["Main Index Channel"] # Placeholder
+    })
+
+@app.route('/admin')
+def admin_page():
+    return render_template('admin.html')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
