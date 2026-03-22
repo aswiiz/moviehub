@@ -28,3 +28,6 @@ if ADMIN_ID:
 
 # Simple API Key Protection
 API_KEY = os.getenv("MOVIEHUB_API_KEY", "CHANGEME")
+
+# String Session for Userbot
+TELEGRAM_STRING_SESSION = os.getenv("TELEGRAM_STRING_SESSION", "")
