@@ -24,6 +24,7 @@ except Exception as e:
     db = client.moviehub
 movies_collection = db.movies
 settings_collection = db.settings
+files_collection = db.files
 
 # Pyrogram Client for Streaming & Indexing
 is_vercel = os.getenv("VERCEL") == "1"
@@ -64,20 +65,63 @@ def index():
 @app.route('/search', methods=['GET'])
 @require_api_key
 def search():
-    query = request.args.get('q', '')
-    if not query:
-        return jsonify([])
+    # Handle movie search (existing)
+    q = request.args.get('q', '')
+    if q:
+        regex = re.compile(f".*{re.escape(q)}.*", re.IGNORECASE)
+        results = movies_collection.find({"title": regex})
+        movies = []
+        for movie in results:
+            movie['_id'] = str(movie['_id'])
+            movies.append(movie)
+        return jsonify(movies)
 
-    # Case-insensitive regex search
-    regex = re.compile(f".*{re.escape(query)}.*", re.IGNORECASE)
-    results = movies_collection.find({"title": regex})
+    # Handle file search (new requirement)
+    query = request.args.get('query', '')
+    if query:
+        regex = re.compile(f".*{re.escape(query)}.*", re.IGNORECASE)
+        results = files_collection.find({
+            "$or": [
+                {"file_name": regex},
+                {"caption": regex}
+            ]
+        })
+        files = []
+        for f in results:
+            f['_id'] = str(f['_id'])
+            if 'indexed_at' in f:
+                f['indexed_at'] = f['indexed_at'].isoformat()
+            files.append(f)
+        return jsonify(files)
 
-    movies = []
-    for movie in results:
-        movie['_id'] = str(movie['_id'])
-        movies.append(movie)
-    
+    return jsonify([])
+
     return jsonify(movies)
+
+@app.route('/file/<file_id>', methods=['GET'])
+@require_api_key
+def get_file_details(file_id):
+    try:
+        # Try finding by MongoDB _id first
+        try:
+            f = files_collection.find_one({"_id": ObjectId(file_id)})
+        except:
+            f = None
+            
+        # If not found, try finding by file_id (Telegram's file_id)
+        if not f:
+            f = files_collection.find_one({"file_id": file_id})
+            
+        if not f:
+            return jsonify({"error": "Not Found", "message": "File not found"}), 404
+
+        f['_id'] = str(f['_id'])
+        if 'indexed_at' in f:
+            f['indexed_at'] = f['indexed_at'].isoformat()
+            
+        return jsonify(f)
+    except Exception as e:
+        return jsonify({"error": "Internal Error", "message": str(e)}), 500
 
 @app.route('/download/<movie_id>/<quality>', methods=['GET'])
 @require_api_key

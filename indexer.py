@@ -5,6 +5,9 @@ from pymongo import MongoClient
 import config
 import time
 import os
+import asyncio
+
+from datetime import datetime, timezone
 
 # MongoDB Setup
 try:
@@ -18,6 +21,10 @@ except Exception as e:
     client = MongoClient() 
     db = client.moviehub
 movies_collection = db.movies
+files_collection = db.files
+
+# In-memory storage for last forwarded chat per user
+last_forwarded_chat = {}
 
 def get_client():
     is_vercel = os.getenv("VERCEL") == "1"
@@ -186,6 +193,41 @@ def process_message(message):
         update_default_quality(result.inserted_id)
         print(f"Indexed: {final_title} ({quality}) - New entry")
 
+def process_file_message(message):
+    """Processes a single Telegram message for generic file indexing."""
+    if not message.document and not message.video and not message.audio:
+        return
+
+    file = message.document or message.video or message.audio
+    file_id = file.file_id
+    file_name = getattr(file, 'file_name', 'Untitled')
+    file_size = format_size(file.file_size)
+    file_type = file.mime_type or "unknown"
+    caption = message.caption or ""
+    channel_id = str(message.chat.id)
+    message_id = message.id
+    date = message.date
+
+    # Prepare file record
+    file_record = {
+        "file_id": file_id,
+        "channel_id": channel_id,
+        "message_id": message_id,
+        "file_name": file_name,
+        "caption": caption,
+        "file_type": file_type,
+        "size": file_size,
+        "indexed_at": datetime.now(timezone.utc)
+    }
+
+    # Upsert record (using file_id as unique key)
+    files_collection.update_one(
+        {"file_id": file_id},
+        {"$set": file_record},
+        upsert=True
+    )
+    print(f"File Indexed/Updated: {file_name}")
+
 def update_default_quality(movie_id):
     """Sets 720p as default if available, otherwise first file."""
     movie = movies_collection.find_one({"_id": movie_id})
@@ -260,15 +302,19 @@ async def handle_message(client, message):
         
         # 1. Forward Handling
         if message.forward_from_chat:
+            # Admin check
+            if config.ADMIN_ID and user_id != config.ADMIN_ID:
+                return
+                
             chat = message.forward_from_chat
             name = getattr(chat, 'title', getattr(chat, 'username', 'Private Chat'))
-            last_msg_id = message.forward_from_message_id or 0
             
-            print(f"DEBUG: Message is FORWARDED from {chat.id} ({name}) - Last ID: {last_msg_id}")
+            print(f"DEBUG: Message is FORWARDED from {chat.id} ({name})")
             
-            # Initiate Indexing
-            await message.reply_text(f"🚀 **Detected Forward**\nSource: `{name}`\nID: `{chat.id}`\nLast ID: `{last_msg_id}`\nStarting Indexing...")
-            asyncio.create_task(index_channel(chat.id, limit=last_msg_id))
+            # Store for later indexing
+            last_forwarded_chat[user_id] = chat.id
+            
+            await message.reply_text(f"📥 **Channel Detected**\nSource: `{name}`\nID: `{chat.id}`\n\nSend `/index` to start indexing this channel.")
             return
 
         # 2. Command/Text Handling
@@ -277,17 +323,27 @@ async def handle_message(client, message):
                 await message.reply_text("Welcome to MOVIE HUB! \n\n1. Send me a movie name to search.\n2. **Forward a message from a channel** to start indexing its files!\n3. Use `/index <chat_id> <last_id>` for manual indexing.")
             
             elif message.text.startswith('/index'):
+                # Admin check
+                if config.ADMIN_ID and message.from_user.id != config.ADMIN_ID:
+                    return await message.reply_text("❌ Unauthorized. Admin only.")
+
                 parts = message.text.split()
-                if len(parts) < 3:
-                    return await message.reply_text("Usage: `/index <chat_id> <last_msg_id>`")
+                target_chat = None
+                target_limit = None
+
+                if len(parts) > 1:
+                    target_chat = parts[1]
+                    if len(parts) > 2:
+                        target_limit = int(parts[2])
+                else:
+                    # Check in-memory storage
+                    target_chat = last_forwarded_chat.get(user_id)
                 
-                target_chat = parts[1]
-                try:
-                    target_last_id = int(parts[2])
-                    await message.reply_text(f"Starting manual indexing for `{target_chat}` up to ID `{target_last_id}`...")
-                    asyncio.create_task(index_channel(target_chat, limit=target_last_id))
-                except ValueError:
-                    await message.reply_text("Last message ID must be a number.")
+                if not target_chat:
+                    return await message.reply_text("❌ No channel detected. Forward a message/file from a channel first, or use `/index <chat_id>`.")
+
+                await message.reply_text(f"🚀 **Indexing Started**\nTarget: `{target_chat}`\n\nProcessing files... please wait.")
+                asyncio.create_task(index_channel(target_chat, limit=target_limit))
             return
 
         # 3. Search handling
@@ -332,19 +388,21 @@ async def index_channel(chat_id, limit=None, offset_id=0):
         if me.is_bot:
             print(f"INFO: Running as BOT (@{me.username}). Using batch retrieval.")
             async for message in iter_messages(chat_id, limit=limit, offset=offset_id):
-                if message and not message.empty and message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
-                    process_message(message)
-                    count += 1
-                    if count % 20 == 0:
-                        print(f"Progress: Indexed {count} files...")
+                if message and not message.empty:
+                    if message.document or message.video or message.audio:
+                        process_file_message(message)
+                        count += 1
+                        if count % 20 == 0:
+                            print(f"Progress: Indexed {count} files...")
         else:
             print(f"INFO: Running as USER ({me.first_name}). Using standard history crawl.")
             async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
-                if message and not message.empty and message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
-                    process_message(message)
-                    count += 1
-                    if count % 20 == 0:
-                        print(f"Progress: Indexed {count} files...")
+                if message and not message.empty:
+                    if message.document or message.video or message.audio:
+                        process_file_message(message)
+                        count += 1
+                        if count % 20 == 0:
+                            print(f"Progress: Indexed {count} files...")
         
         print(f"Indexing complete. Processed {count} files.")
         
@@ -403,7 +461,6 @@ async def main():
         await app.stop()
 
 if __name__ == "__main__":
-    import asyncio
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
