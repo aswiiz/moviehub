@@ -25,17 +25,28 @@ except Exception as e:
 movies_collection = db.movies
 settings_collection = db.settings
 
-# Pyrogram Client for Streaming
-# Vercel needs sessions in /tmp as the filesystem is read-only
+# Pyrogram Client for Streaming & Indexing
 is_vercel = os.getenv("VERCEL") == "1"
 session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
 
-pyro_app = Client(
-    session_name,
-    api_id=config.TELEGRAM_API_ID,
-    api_hash=config.TELEGRAM_API_HASH,
-    bot_token=config.TELEGRAM_BOT_TOKEN
-)
+# Support for Userbot (String Session) on Vercel
+string_session = os.getenv("TELEGRAM_STRING_SESSION")
+
+if string_session:
+    print("Using TELEGRAM_STRING_SESSION for Userbot mode.")
+    pyro_app = Client(
+        "moviehub_userbot",
+        session_string=string_session,
+        api_id=config.TELEGRAM_API_ID,
+        api_hash=config.TELEGRAM_API_HASH
+    )
+else:
+    pyro_app = Client(
+        session_name,
+        api_id=config.TELEGRAM_API_ID,
+        api_hash=config.TELEGRAM_API_HASH,
+        bot_token=config.TELEGRAM_BOT_TOKEN
+    )
 
 def require_api_key(f):
     def decorated_function(*args, **kwargs):
@@ -181,20 +192,29 @@ def get_highlights():
     if not settings or not settings.get('movies'):
         return jsonify([])
     
-    # settings['movies'] is now a list of {"movie_id": "...", "custom_poster": "..."}
     h_data = settings['movies']
-    movie_ids = [ObjectId(m['movie_id']) for m in h_data]
-    results = {str(m['_id']): m for m in movies_collection.find({"_id": {"$in": movie_ids}})}
-    
     highlights = []
+    
     for item in h_data:
-        mid = item['movie_id']
-        if mid in results:
-            movie = results[mid]
-            movie['_id'] = mid
-            # Override poster if custom one exists
-            if item.get('custom_poster'):
-                movie['poster'] = item['custom_poster']
+        mid_or_name = item['movie_id']
+        custom_poster = item.get('custom_poster')
+        
+        movie = None
+        # 1. Try by ID
+        try:
+            if len(mid_or_name) == 24: # Likely ObjectId
+                movie = movies_collection.find_one({"_id": ObjectId(mid_or_name)})
+        except:
+            pass
+            
+        # 2. Try by Name if ID failed
+        if not movie:
+            movie = movies_collection.find_one({"title": {"$regex": f"^{re.escape(mid_or_name)}$", "$options": "i"}})
+            
+        if movie:
+            movie['_id'] = str(movie['_id'])
+            if custom_poster:
+                movie['poster'] = custom_poster
             highlights.append(movie)
             
     return jsonify(highlights)
