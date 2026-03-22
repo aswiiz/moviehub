@@ -181,26 +181,35 @@ def get_highlights():
     if not settings or not settings.get('movies'):
         return jsonify([])
     
-    # Fetch movie details for the highlighted IDs
-    movie_ids = [ObjectId(mid) for mid in settings['movies']]
-    results = list(movies_collection.find({"_id": {"$in": movie_ids}}))
+    # settings['movies'] is now a list of {"movie_id": "...", "custom_poster": "..."}
+    h_data = settings['movies']
+    movie_ids = [ObjectId(m['movie_id']) for m in h_data]
+    results = {str(m['_id']): m for m in movies_collection.find({"_id": {"$in": movie_ids}})}
     
     highlights = []
-    for m in results:
-        m['_id'] = str(m['_id'])
-        highlights.append(m)
+    for item in h_data:
+        mid = item['movie_id']
+        if mid in results:
+            movie = results[mid]
+            movie['_id'] = mid
+            # Override poster if custom one exists
+            if item.get('custom_poster'):
+                movie['poster'] = item['custom_poster']
+            highlights.append(movie)
+            
     return jsonify(highlights)
 
 @app.route('/api/admin/highlights', methods=['POST'])
 @require_api_key
 def update_highlights():
-    movie_ids = request.json.get('movie_ids', [])
-    if len(movie_ids) > 3:
+    # Expects list of {"movie_id": "...", "custom_poster": "..."}
+    h_data = request.json.get('movies', [])
+    if len(h_data) > 3:
         return jsonify({"error": "Max 3 highlights allowed"}), 400
     
     settings_collection.update_one(
         {"type": "highlights"},
-        {"$set": {"movies": movie_ids}},
+        {"$set": {"movies": h_data}},
         upsert=True
     )
     return jsonify({"status": "success"})

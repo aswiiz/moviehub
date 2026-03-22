@@ -4,57 +4,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - Movie Hub</title>
+    <title>Admin - Movie Hub</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         .admin-container {
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 2rem;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 2.5rem;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
+            border-radius: 25px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            margin-bottom: 2rem;
+            gap: 1.5rem;
+            margin-bottom: 3rem;
         }
 
         .stat-card {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 1rem;
-            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 1.5rem;
+            border-radius: 15px;
             text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .card-value {
-            font-size: 1.5rem;
-            font-weight: 600;
+            font-size: 1.8rem;
+            font-weight: 700;
             color: var(--accent);
+            margin-top: 5px;
         }
 
-        .input-group {
+        .card-label {
+            font-size: 0.9rem;
+            opacity: 0.6;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        section {
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        h2 {
+            margin-bottom: 1.5rem;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .highlight-item {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 1.5rem;
+            border-radius: 15px;
             margin-bottom: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 1rem;
+            margin-bottom: 10px;
         }
 
         input {
             width: 100%;
-            padding: 0.8rem;
-            border-radius: 8px;
-            border: none;
-            background: rgba(255, 255, 255, 0.1);
+            padding: 0.9rem 1.2rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             color: white;
+            font-family: inherit;
         }
 
         button {
             cursor: pointer;
             transition: 0.3s;
-            padding: 0.8rem 1.5rem;
-            border-radius: 8px;
+            padding: 0.9rem 1.8rem;
+            border-radius: 12px;
             border: none;
             background: var(--accent);
             color: white;
@@ -62,74 +98,128 @@
         }
 
         button:hover {
-            opacity: 0.8;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 59, 131, 0.3);
         }
 
-        #login-form {
-            max-width: 400px;
-            margin: 100px auto;
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .search-finder {
+            margin-bottom: 2rem;
+            background: rgba(255, 59, 131, 0.05);
+            padding: 1.5rem;
+            border-radius: 15px;
+            border: 1px dashed var(--accent);
+        }
+
+        #search-results {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 5px;
+        }
+
+        .result-item {
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-item:hover {
+            background: rgba(255, 59, 131, 0.2);
         }
 
         .hidden {
             display: none;
-        }
-
-        .highlight-item {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
         }
     </style>
 </head>
 
 <body>
     <div id="login-section" class="admin-container">
-        <h1>Admin Login</h1>
-        <div id="login-form">
-            <div class="input-group"><input type="text" id="username" placeholder="Username"></div>
-            <div class="input-group"><input type="password" id="password" placeholder="Password"></div>
-            <button onclick="adminLogin()">Login</button>
+        <h1>🔐 Admin Access</h1>
+        <div style="max-width: 400px; margin: 40px auto;">
+            <input type="text" id="username" placeholder="Username" style="margin-bottom: 15px;">
+            <input type="password" id="password" placeholder="Password" style="margin-bottom: 20px;">
+            <button onclick="adminLogin()" style="width: 100%;">Enter Dashboard</button>
         </div>
     </div>
 
     <div id="admin-section" class="admin-container hidden">
-        <h1>Admin Dashboard</h1>
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3rem;">
+            <h1>🛠️ Control Center</h1>
+            <button onclick="logout()" class="btn-secondary">Logout</button>
+        </header>
+
         <div class="stats-grid">
             <div class="stat-card">
-                <div>Total Movies</div>
+                <div class="card-label">Total Media</div>
                 <div id="stat-movies" class="card-value">0</div>
             </div>
             <div class="stat-card">
-                <div>DB Size</div>
-                <div id="stat-size" class="card-value">0 MB</div>
+                <div class="card-label">Database Size</div>
+                <div id="stat-size" class="card-value">0.0 MB</div>
             </div>
             <div class="stat-card">
-                <div>Channels</div>
+                <div class="card-label">Active Channels</div>
                 <div id="stat-channels" class="card-value">0</div>
             </div>
         </div>
 
-        <section>
-            <h2>Manage Highlights (Max 3)</h2>
-            <div id="highlight-inputs">
-                <div class="highlight-item"><input type="text" class="movie-id" placeholder="Movie ID 1"></div>
-                <div class="highlight-item"><input type="text" class="movie-id" placeholder="Movie ID 2"></div>
-                <div class="highlight-item"><input type="text" class="movie-id" placeholder="Movie ID 3"></div>
+        <section class="search-finder">
+            <h2>🔍 Find Movie ID</h2>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="find-name" placeholder="Enter movie name to get ID (e.g. Minnal Murali)">
+                <button onclick="findMovieID()">Search ID</button>
             </div>
-            <button onclick="saveHighlights()">Save Highlights</button>
+            <div id="search-results"></div>
         </section>
 
-        <section style="margin-top: 2rem;">
-            <h2>Quick Index</h2>
-            <div class="input-group"><input type="text" id="index-chat-id" placeholder="Channel ID (-100...)"></div>
-            <button onclick="triggerIndex()">Start Indexing</button>
+        <section>
+            <h2>✨ Featured Highlights</h2>
+            <div id="highlight-inputs">
+                <div class="highlight-item">
+                    <div class="input-row">
+                        <input type="text" class="movie-id" placeholder="Movie ID (click search result to fill)">
+                        <input type="text" class="custom-poster" placeholder="Custom Poster URL (optional)">
+                    </div>
+                </div>
+                <div class="highlight-item">
+                    <div class="input-row">
+                        <input type="text" class="movie-id" placeholder="Movie ID">
+                        <input type="text" class="custom-poster" placeholder="Custom Poster URL (optional)">
+                    </div>
+                </div>
+                <div class="highlight-item">
+                    <div class="input-row">
+                        <input type="text" class="movie-id" placeholder="Movie ID">
+                        <input type="text" class="custom-poster" placeholder="Custom Poster URL (optional)">
+                    </div>
+                </div>
+            </div>
+            <button onclick="saveHighlights()" style="width: 100%; margin-top: 10px;">Save Featured Movies</button>
         </section>
 
-        <button onclick="logout()" style="margin-top: 2rem; background: #ff4444;">Logout</button>
+        <section>
+            <h2>📡 Instant Indexer</h2>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <input type="text" id="index-chat-id" placeholder="Channel ID (e.g. -100...)">
+                <input type="number" id="index-limit" value="100" style="width: 100px;">
+            </div>
+            <p style="font-size: 0.8rem; opacity: 0.5; margin-bottom: 15px;">Bot must be admin in private channels. This
+                will crawl the latest messages.</p>
+            <button onclick="triggerIndex()" style="width: 100%;">Launch Indexing Task</button>
+        </section>
     </div>
 
     <script>
-        const API_KEY = "greenmovies"; // Injected or set globally
+        const API_KEY = "greenmovies";
 
         function adminLogin() {
             const u = document.getElementById('username').value;
@@ -171,31 +261,99 @@
             fetch('/api/highlights')
                 .then(res => res.json())
                 .then(data => {
-                    const inputs = document.querySelectorAll('.movie-id');
-                    data.forEach((m, i) => { if (inputs[i]) inputs[i].value = m._id; });
+                    const idInputs = document.querySelectorAll('.movie-id');
+                    const posterInputs = document.querySelectorAll('.custom-poster');
+                    data.forEach((m, i) => {
+                        if (idInputs[i]) idInputs[i].value = m._id;
+                        if (posterInputs[i] && m.poster && m.poster.includes('http')) {
+                            // We don't distinguish custom from auto, but we show what we have
+                            posterInputs[i].value = m.poster;
+                        }
+                    });
                 });
         }
 
+        function findMovieID() {
+            const name = document.getElementById('find-name').value;
+            if (!name) return;
+            const resultsDiv = document.getElementById('search-results');
+            resultsDiv.innerHTML = "Searching...";
+
+            fetch(`/search?q=${encodeURIComponent(name)}&key=${API_KEY}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.length === 0) resultsDiv.innerHTML = "No movies found in DB. Index them first.";
+                    else {
+                        resultsDiv.innerHTML = data.map(m => `
+                        <div class="result-item" onclick="copyID('${m._id}')">
+                            <span>${m.title} (${m.year})</span>
+                            <span style="font-family: monospace; opacity: 0.6; font-size: 0.8rem;">ID: ${m._id}</span>
+                        </div>
+                    `).join('');
+                    }
+                });
+        }
+
+        function copyID(id) {
+            const inputs = document.querySelectorAll('.movie-id');
+            for (let input of inputs) {
+                if (!input.value) {
+                    input.value = id;
+                    alert("ID added to slot.");
+                    return;
+                }
+            }
+            alert("Slots are full. Clear one first.");
+        }
+
         function saveHighlights() {
-            const ids = Array.from(document.querySelectorAll('.movie-id')).map(i => i.value).filter(v => v.trim() !== "");
+            const idInputs = document.querySelectorAll('.movie-id');
+            const posterInputs = document.querySelectorAll('.custom-poster');
+            const movies = [];
+
+            for (let i = 0; i < idInputs.length; i++) {
+                if (idInputs[i].value.trim()) {
+                    movies.push({
+                        movie_id: idInputs[i].value.trim(),
+                        custom_poster: posterInputs[i].value.trim()
+                    });
+                }
+            }
+
             fetch(`/api/admin/highlights?key=${API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ movie_ids: ids })
+                body: JSON.stringify({ movies: movies })
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.status === 'success') alert("Highlights updated!");
-                    else alert(data.error);
+                    if (data.status === 'success') alert("✅ Highlights updated and saved!");
+                    else alert("❌ " + data.error);
                 });
         }
 
         function triggerIndex() {
             const chatId = document.getElementById('index-chat-id').value;
+            const limit = document.getElementById('index-limit').value;
             if (!chatId) return alert("Enter Channel ID");
-            fetch(`/index?chat_id=${chatId}&limit=100&key=${API_KEY}`)
+
+            const btn = event.target;
+            btn.innerText = "Indexing... Please Wait (Max 30s)";
+            btn.disabled = true;
+
+            fetch(`/index?chat_id=${chatId}&limit=${limit}&key=${API_KEY}`)
                 .then(res => res.json())
-                .then(data => alert(data.message || data.error));
+                .then(data => {
+                    alert(data.message || data.error);
+                    btn.innerText = "Launch Indexing Task";
+                    btn.disabled = false;
+                    loadStats();
+                })
+                .catch(e => {
+                    alert("Timeout or Network Error. Check your channel again in 1 min.");
+                    btn.innerText = "Launch Indexing Task";
+                    btn.disabled = false;
+                });
         }
 
         if (localStorage.getItem('admin_token')) showDashboard();

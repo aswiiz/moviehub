@@ -213,25 +213,38 @@ def update_default_quality(movie_id):
 async def iter_messages(chat_id, limit, offset=0):
     """
     Yields messages from a chat by fetching them in batches.
-    Useful for bots that cannot use get_chat_history.
+    Works backwards from the latest message if offset is 0.
     """
-    current = offset
-    while True:
-        # Fetch in batches of 200 (Telegram limit for get_messages)
-        new_diff = min(200, limit - current)
-        if new_diff <= 0:
-            return
-            
-        # Create a list of message IDs to fetch
-        ids = list(range(current + 1, current + new_diff + 1))
+    try:
+        # Get the latest message ID first
+        chat = await app.get_chat(chat_id)
+        last_id = chat.last_message_id
+        print(f"DEBUG: Last Message ID in {chat_id} is {last_id}")
+    except Exception as e:
+        print(f"Error getting chat info for {chat_id}: {e}")
+        return
+
+    current = last_id if offset == 0 else offset
+    total_fetched = 0
+
+    while total_fetched < limit and current > 0:
+        batch_size = min(200, limit - total_fetched)
+        start_id = max(1, current - batch_size + 1)
+        ids = list(range(start_id, current + 1))
+        
         try:
             messages = await app.get_messages(chat_id, ids)
-            for message in messages:
+            # Reverse batch to go backwards
+            for message in reversed(messages):
                 yield message
-                current += 1
+                total_fetched += 1
+                if total_fetched >= limit:
+                    break
+            
+            current = start_id - 1
         except Exception as e:
-            print(f"Error fetching batch {current}-{current+new_diff}: {e}")
-            return # Stop on fatal error
+            print(f"Error fetching batch near {current}: {e}")
+            break
 
 # Remove the decorator, we will use add_handler instead
 async def handle_message(client, message):
