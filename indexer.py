@@ -199,6 +199,29 @@ def update_default_quality(movie_id):
         {"$set": {"files": files}}
     )
 
+async def iter_messages(chat_id, limit, offset=0):
+    """
+    Yields messages from a chat by fetching them in batches.
+    Useful for bots that cannot use get_chat_history.
+    """
+    current = offset
+    while True:
+        # Fetch in batches of 200 (Telegram limit for get_messages)
+        new_diff = min(200, limit - current)
+        if new_diff <= 0:
+            return
+            
+        # Create a list of message IDs to fetch
+        ids = list(range(current + 1, current + new_diff + 1))
+        try:
+            messages = await app.get_messages(chat_id, ids)
+            for message in messages:
+                yield message
+                current += 1
+        except Exception as e:
+            print(f"Error fetching batch {current}-{current+new_diff}: {e}")
+            return # Stop on fatal error
+
 # Remove the decorator, we will use add_handler instead
 async def handle_message(client, message):
     """Handles search queries or forwarded messages for indexing."""
@@ -209,23 +232,29 @@ async def handle_message(client, message):
     # 1. Check for forwarded messages (to start indexing)
     if message.forward_from_chat:
         chat = message.forward_from_chat
-        await message.reply_text(f"Detected forward from: **{chat.title}** (ID: `{chat.id}`)\nAttempting to index history...")
-        try:
-            # We run this in the background/async so it doesn't block other messages
-            asyncio.create_task(index_channel(chat.id, limit=1000))
-            await message.reply_text("Indexing started in the background. I'll search for video files.")
-            
-            # Notify admin
-            if config.ADMIN_ID:
-                await client.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nChannel: {chat.title}\nID: `{chat.id}`\nTriggered by: {message.from_user.first_name}")
-        except Exception as e:
-            await message.reply_text(f"Failed to start indexing: {e}")
+        last_msg_id = message.forward_from_message_id
+        await message.reply_text(f"Detected forward from: **{chat.title}** (ID: `{chat.id}`)\nLast Message ID: `{last_msg_id}`\nAttempting to index history...")
+        
+        asyncio.create_task(index_channel(chat.id, limit=last_msg_id))
         return
 
-    # 2. Handle search queries
-    if not message.text or message.text.startswith('/'):
+    # 2. Handle commands
+    if message.text and message.text.startswith('/'):
         if message.text == "/start":
-            await message.reply_text("Welcome to MOVIE HUB! \n\n1. Send me a movie name to search.\n2. **Forward a message from a channel** to start indexing its files!")
+            await message.reply_text("Welcome to MOVIE HUB! \n\n1. Send me a movie name to search.\n2. **Forward a message from a channel** to start indexing its files!\n3. Use `/index <chat_id> <last_id>` for manual indexing.")
+        
+        elif message.text.startswith('/index'):
+            parts = message.text.split()
+            if len(parts) < 3:
+                return await message.reply_text("Usage: `/index <chat_id> <last_msg_id>`")
+            
+            try:
+                target_chat = parts[1]
+                target_last_id = int(parts[2])
+                await message.reply_text(f"Starting manual indexing for `{target_chat}` up to ID `{target_last_id}`...")
+                asyncio.create_task(index_channel(target_chat, limit=target_last_id))
+            except ValueError:
+                await message.reply_text("Last message ID must be a number.")
         return
 
     query = message.text
@@ -247,18 +276,22 @@ async def handle_message(client, message):
     await message.reply_text(response_text)
 
 async def index_channel(chat_id, limit=None, offset_id=0):
-    """Indexes full channel history or range."""
+    """Indexes full channel history or range using batch retrieval."""
     count = 0
-    print(f"DEBUG: Starting index_channel for {chat_id}")
+    print(f"DEBUG: Starting index_channel for {chat_id} (Limit: {limit})")
     try:
-        async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
-            if message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
+        if config.ADMIN_ID:
+            await app.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nTarget: `{chat_id}`\nMethod: Batch Retrieval")
+
+        # Use our new batch iterator
+        async for message in iter_messages(chat_id, limit=limit, offset=offset_id):
+            if message and not message.empty and message.document and any(message.document.mime_type.startswith(x) for x in ["video/", "application/"]):
                 process_message(message)
                 count += 1
-                if count % 10 == 0:
+                if count % 20 == 0:
                     print(f"Progress: Indexed {count} files...")
         
-        print(f"Indexing complete. Processed {count} messages.")
+        print(f"Indexing complete. Processed {count} files.")
         
         # Notify admin if possible
         if config.ADMIN_ID:
