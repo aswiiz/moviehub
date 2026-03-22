@@ -224,56 +224,70 @@ async def iter_messages(chat_id, limit, offset=0):
 
 # Remove the decorator, we will use add_handler instead
 async def handle_message(client, message):
-    """Handles search queries or forwarded messages for indexing."""
-    print(f"DEBUG: Received message from {message.from_user.id if message.from_user else 'Unknown'}: {message.text or '[No Text]'}")
-    if message.forward_from_chat:
-        print(f"DEBUG: Message is FORWARDED from {message.forward_from_chat.id} ({message.forward_from_chat.title})")
-    
-    # 1. Check for forwarded messages (to start indexing)
-    if message.forward_from_chat:
-        chat = message.forward_from_chat
-        last_msg_id = message.forward_from_message_id
-        await message.reply_text(f"Detected forward from: **{chat.title}** (ID: `{chat.id}`)\nLast Message ID: `{last_msg_id}`\nAttempting to index history...")
+    """Handles search queries or forwarded messages for indexing with robust error catching."""
+    try:
+        # Logging basics
+        user_id = message.from_user.id if message.from_user else 'Unknown'
+        text = message.text or "[No Text]"
+        print(f"DEBUG: Processing message from {user_id}: {text}")
         
-        asyncio.create_task(index_channel(chat.id, limit=last_msg_id))
-        return
-
-    # 2. Handle commands
-    if message.text and message.text.startswith('/'):
-        if message.text == "/start":
-            await message.reply_text("Welcome to MOVIE HUB! \n\n1. Send me a movie name to search.\n2. **Forward a message from a channel** to start indexing its files!\n3. Use `/index <chat_id> <last_id>` for manual indexing.")
-        
-        elif message.text.startswith('/index'):
-            parts = message.text.split()
-            if len(parts) < 3:
-                return await message.reply_text("Usage: `/index <chat_id> <last_msg_id>`")
+        # 1. Forward Handling
+        if message.forward_from_chat:
+            chat = message.forward_from_chat
+            name = getattr(chat, 'title', getattr(chat, 'username', 'Private Chat'))
+            last_msg_id = message.forward_from_message_id or 0
             
-            try:
+            print(f"DEBUG: Message is FORWARDED from {chat.id} ({name}) - Last ID: {last_msg_id}")
+            
+            # Initiate Indexing
+            await message.reply_text(f"🚀 **Detected Forward**\nSource: `{name}`\nID: `{chat.id}`\nLast ID: `{last_msg_id}`\nStarting Indexing...")
+            asyncio.create_task(index_channel(chat.id, limit=last_msg_id))
+            return
+
+        # 2. Command/Text Handling
+        if message.text and message.text.startswith('/'):
+            if message.text == "/start":
+                await message.reply_text("Welcome to MOVIE HUB! \n\n1. Send me a movie name to search.\n2. **Forward a message from a channel** to start indexing its files!\n3. Use `/index <chat_id> <last_id>` for manual indexing.")
+            
+            elif message.text.startswith('/index'):
+                parts = message.text.split()
+                if len(parts) < 3:
+                    return await message.reply_text("Usage: `/index <chat_id> <last_msg_id>`")
+                
                 target_chat = parts[1]
-                target_last_id = int(parts[2])
-                await message.reply_text(f"Starting manual indexing for `{target_chat}` up to ID `{target_last_id}`...")
-                asyncio.create_task(index_channel(target_chat, limit=target_last_id))
-            except ValueError:
-                await message.reply_text("Last message ID must be a number.")
-        return
+                try:
+                    target_last_id = int(parts[2])
+                    await message.reply_text(f"Starting manual indexing for `{target_chat}` up to ID `{target_last_id}`...")
+                    asyncio.create_task(index_channel(target_chat, limit=target_last_id))
+                except ValueError:
+                    await message.reply_text("Last message ID must be a number.")
+            return
 
-    query = message.text
-    results = list(movies_collection.find({
-        "title": {"$regex": f".*{re.escape(query)}.*", "$options": "i"}
-    }).limit(10))
+        # 3. Search handling
+        if message.text:
+            query = message.text
+            results = list(movies_collection.find({
+                "title": {"$regex": f".*{re.escape(query)}.*", "$options": "i"}
+            }).limit(10))
 
-    if not results:
-        await message.reply_text("No movies found for your search.")
-        return
+            if not results:
+                await message.reply_text("No movies found for your search.")
+            else:
+                response_text = f"🔍 Search results for: **{query}**\n\n"
+                for movie in results:
+                    response_text += f"🎬 **{movie['title']}** ({movie.get('year', 'N/A')})\n"
+                    for f in movie.get('files', []):
+                         response_text += f"  └ {f['quality']} - {f['size']}\n"
+                    response_text += "\n"
+                await message.reply_text(response_text)
 
-    response_text = f"🔍 Search results for: **{query}**\n\n"
-    for movie in results:
-        response_text += f"🎬 **{movie['title']}** ({movie.get('year', 'N/A')})\n"
-        for f in movie.get('files', []):
-            response_text += f"  └ {f['quality']} - {f['size']}\n"
-        response_text += "\n"
-    
-    await message.reply_text(response_text)
+    except Exception as e:
+        print(f"CRITICAL ERROR in handle_message: {e}")
+        try:
+            # Tell the user/admin about the error if possible
+            await message.reply_text(f"❌ **Handler Error**: {e}")
+        except:
+            pass
 
 async def index_channel(chat_id, limit=None, offset_id=0):
     """Indexes full channel history or range using batch retrieval."""
