@@ -30,7 +30,18 @@ def get_client():
     is_vercel = os.getenv("VERCEL") == "1"
     session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
     
-    # Check for bot token vs user account
+    # 1. Prioritize String Session (Userbot)
+    string_session = getattr(config, 'TELEGRAM_STRING_SESSION', None)
+    if string_session:
+        print("Using TELEGRAM_STRING_SESSION for indexing client.")
+        return Client(
+            "moviehub_userbot",
+            session_string=string_session,
+            api_id=config.TELEGRAM_API_ID,
+            api_hash=config.TELEGRAM_API_HASH
+        )
+        
+    # 2. Check for bot token
     bot_token = config.TELEGRAM_BOT_TOKEN
     if not bot_token or bot_token == "CHANGEME":
         print("NOTE: No Bot Token found. Switching to USERBOT mode (interactive login).")
@@ -297,37 +308,42 @@ async def handle_message(client, message):
     try:
         # Logging basics
         user_id = message.from_user.id if message.from_user else 'Unknown'
-        text = message.text or "[No Text]"
-        print(f"DEBUG: Processing message from {user_id}: {text}")
+        text = message.text or ""
+        print(f"DEBUG: Processing message from {user_id}: {text[:50]}")
         
-        # 1. Forward Handling
+        # Admin check for all sensitive operations
+        is_admin = (config.ADMIN_ID and user_id == config.ADMIN_ID)
+        
+        # 1. Detection of File/Channel for Indexing
+        # Triggered when admin forwards a message from a channel OR sends a file directly (if not private chat)
+        source_chat_id = None
+        source_name = None
+
         if message.forward_from_chat:
-            # Admin check
-            if config.ADMIN_ID and user_id != config.ADMIN_ID:
-                return
-                
-            chat = message.forward_from_chat
-            name = getattr(chat, 'title', getattr(chat, 'username', 'Private Chat'))
-            
-            print(f"DEBUG: Message is FORWARDED from {chat.id} ({name})")
-            
-            # Store for later indexing
-            last_forwarded_chat[user_id] = chat.id
-            
-            await message.reply_text(f"📥 **Channel Detected**\nSource: `{name}`\nID: `{chat.id}`\n\nSend `/index` to start indexing this channel.")
+            source_chat_id = message.forward_from_chat.id
+            source_name = getattr(message.forward_from_chat, 'title', getattr(message.forward_from_chat, 'username', 'Private Chat'))
+        elif (message.document or message.video or message.audio) and message.chat.type != "private":
+            # If a file is sent in a group/channel where bot is present
+            source_chat_id = message.chat.id
+            source_name = getattr(message.chat, 'title', 'This Group')
+
+        if source_chat_id and is_admin:
+            print(f"DEBUG: Setting target channel for admin {user_id} to {source_chat_id}")
+            last_forwarded_chat[user_id] = source_chat_id
+            await message.reply_text(f"📥 **Channel Detected**\nSource: `{source_name or source_chat_id}`\nID: `{source_chat_id}`\n\nSend `/index` to start indexing this channel.")
             return
 
-        # 2. Command/Text Handling
-        if message.text and message.text.startswith('/'):
-            if message.text == "/start":
-                await message.reply_text("Welcome to MOVIE HUB! \n\n1. Send me a movie name to search.\n2. **Forward a message from a channel** to start indexing its files!\n3. Use `/index <chat_id> <last_id>` for manual indexing.")
+        # 2. Command Handling
+        if text.startswith('/'):
+            if text == "/start":
+                await message.reply_text("Welcome to MOVIE HUB! \n\n1. Search for a file/movie.\n2. **Forward/Send** a file from a channel to detect it, then send `/index`!")
+                return
             
-            elif message.text.startswith('/index'):
-                # Admin check
-                if config.ADMIN_ID and message.from_user.id != config.ADMIN_ID:
+            elif text.startswith('/index'):
+                if not is_admin:
                     return await message.reply_text("❌ Unauthorized. Admin only.")
 
-                parts = message.text.split()
+                parts = text.split()
                 target_chat = None
                 target_limit = None
 
@@ -336,15 +352,14 @@ async def handle_message(client, message):
                     if len(parts) > 2:
                         target_limit = int(parts[2])
                 else:
-                    # Check in-memory storage
                     target_chat = last_forwarded_chat.get(user_id)
                 
                 if not target_chat:
                     return await message.reply_text("❌ No channel detected. Forward a message/file from a channel first, or use `/index <chat_id>`.")
 
-                await message.reply_text(f"🚀 **Indexing Started**\nTarget: `{target_chat}`\n\nProcessing files... please wait.")
+                await message.reply_text(f"🚀 **Indexing Started**\nTarget: `{target_chat}`\n\nThis may take a moment...")
                 asyncio.create_task(index_channel(target_chat, limit=target_limit))
-            return
+                return
 
         # 3. Search handling
         if message.text:
