@@ -287,44 +287,7 @@ def update_default_quality(movie_id):
         {"$set": {"files": files}}
     )
 
-async def iter_messages(chat_id, limit, offset=0):
-    """
-    Yields messages from a chat by fetching them in batches.
-    Works backwards from the latest message if offset is 0.
-    """
-    try:
-        if app is None:
-            raise Exception("Indexer client 'app' is not initialized. Please set indexer.app before calling.")
-        
-        # Get the latest message ID first
-        chat = await app.get_chat(chat_id)
-        last_id = chat.last_message_id
-        print(f"DEBUG: Last Message ID in {chat_id} is {last_id}")
-    except Exception as e:
-        print(f"Error getting chat info for {chat_id}: {e}")
-        return
-
-    current = last_id if offset == 0 else offset
-    total_fetched = 0
-
-    while total_fetched < limit and current > 0:
-        batch_size = min(200, limit - total_fetched)
-        start_id = max(1, current - batch_size + 1)
-        ids = list(range(start_id, current + 1))
-        
-        try:
-            messages = await app.get_messages(chat_id, ids)
-            # Reverse batch to go backwards
-            for message in reversed(messages):
-                yield message
-                total_fetched += 1
-                if total_fetched >= limit:
-                    break
-            
-            current = start_id - 1
-        except Exception as e:
-            print(f"Error fetching batch near {current}: {e}")
-            break
+# Removed iter_messages as get_chat_history is more reliable
 
 # Remove the decorator, we will use add_handler instead
 async def handle_message(client, message):
