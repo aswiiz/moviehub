@@ -1,10 +1,3 @@
-import re
-import requests
-from pyrogram import Client
-from pymongo import MongoClient
-import config
-import time
-import os
 import asyncio
 
 # Ensure an event loop exists for sync environments
@@ -13,6 +6,14 @@ try:
 except RuntimeError:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+
+import re
+import requests
+from pyrogram import Client
+from pymongo import MongoClient
+import config
+import time
+import os
 
 from datetime import datetime, timezone
 
