@@ -90,42 +90,7 @@ def get_pyro_app():
 
 def start_bot_worker():
     """Starts the bot listener in a background thread."""
-def start_bot_worker():
-    """Starts the bot listener in a background thread."""
-    async def _run():
-        pyro = get_pyro_app()
-        if not pyro:
-            print("Failed to initialize Pyrogram client.")
-            return
-            
-        # Ensure indexer.app is set before starting
-        indexer.app = pyro
-        
-        try:
-            print("Starting Telegram Bot listener...")
-            if not pyro.is_connected:
-                await pyro.start()
-            print("Bot started successfully in background.")
-            # Keep the bot running forever
-            while True:
-                await asyncio.sleep(3600)
-        except Exception as e:
-            print(f"Bot worker error: {e}")
-
-    def run_thread():
-        try:
-            asyncio.run(_run())
-        except Exception as e:
-            print(f"Asyncio run error: {e}")
-
-    # Start once in a background daemon thread
-    t = threading.Thread(target=run_thread, daemon=True)
-    t.start()
-    print("Background Bot thread initiated.")
-
-# Call startup function
-# In Gunicorn, this will run for each worker. Ensure WEB_CONCURRENCY=1.
-start_bot_worker()
+# No longer starting bot worker here as it will be run as a standalone process via start.sh
 
 def require_api_key(f):
     def decorated_function(*args, **kwargs):
