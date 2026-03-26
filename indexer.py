@@ -141,13 +141,14 @@ def fetch_imdb_data(title):
     return None
 
 def process_message(message):
-    """Processes a single Telegram message containing a document."""
-    if not message.document:
+    """Processes a single Telegram message containing a document, video, or audio."""
+    file = message.document or message.video or message.audio
+    if not file:
         return
 
-    file_id = message.document.file_id
-    file_name = message.document.file_name
-    file_size = message.document.file_size
+    file_id = file.file_id
+    file_name = getattr(file, 'file_name', 'Untitled')
+    file_size = file.file_size
     channel_id = str(message.chat.id) if message.chat else None
     message_id = message.id
     
