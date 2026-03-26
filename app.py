@@ -8,6 +8,14 @@ import config
 import re
 import asyncio
 import os
+
+# Ensure an event loop exists for sync environments (like Gunicorn)
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 import indexer  # Import our indexing logic
 
 # Lazy initialization for Pyrogram Client

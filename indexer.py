@@ -7,6 +7,13 @@ import time
 import os
 import asyncio
 
+# Ensure an event loop exists for sync environments
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 from datetime import datetime, timezone
 
 # MongoDB Setup
