@@ -79,6 +79,9 @@ def get_pyro_app():
         from indexer import handle_message
         _pyro_app.add_handler(MessageHandler(handle_message))
         
+        # CRITICAL: Set the indexer.app reference so handlers can use it
+        indexer.app = _pyro_app
+        
     except Exception as e:
         print(f"Pyrogram Initialization Error: {e}")
         return None
@@ -95,9 +98,13 @@ def start_bot_worker():
             print("Failed to initialize Pyrogram client.")
             return
             
+        # Ensure indexer.app is set before starting
+        indexer.app = pyro
+        
         try:
             print("Starting Telegram Bot listener...")
-            await pyro.start()
+            if not pyro.is_connected:
+                await pyro.start()
             print("Bot started successfully in background.")
             # Keep the bot running forever
             while True:
