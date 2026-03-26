@@ -27,10 +27,11 @@ settings_collection = db.settings
 files_collection = db.files
 
 # Pyrogram Client for Streaming & Indexing
-is_vercel = os.getenv("VERCEL") == "1"
-session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
+# On Render/Production, we use a local session file. 
+# If you need persistence across redeploys, consider using TELEGRAM_STRING_SESSION.
+session_name = "moviehub_bot"
 
-# Support for Userbot (String Session) on Vercel
+# Support for Userbot (String Session)
 string_session = os.getenv("TELEGRAM_STRING_SESSION")
 
 if string_session:
@@ -126,6 +127,10 @@ def get_file_details(file_id):
 @app.route('/download/<movie_id>/<quality>', methods=['GET'])
 @require_api_key
 def download(movie_id, quality):
+    import threading
+    import tempfile
+    import os as _os
+
     try:
         movie = movies_collection.find_one({"_id": ObjectId(movie_id)})
         if not movie:
@@ -134,48 +139,79 @@ def download(movie_id, quality):
         # Find the specific file with matching quality
         file_info = next((f for f in movie.get('files', []) if f['quality'] == quality), None)
         if not file_info:
+            # Fall back to default file if exact quality not found
+            file_info = next((f for f in movie.get('files', []) if f.get('default')), None)
+        if not file_info:
             return jsonify({"error": "Not Found", "message": "Quality not found"}), 404
 
         file_id = file_info['file_id']
-        
-        # Stream the file back using Pyrogram
-        def generate():
-            # Use a helper function to run async pyrogram code
-            async def stream_file():
-                if not pyro_app.is_connected:
-                    await pyro_app.start()
-                
-                # Get message by exploring or using some mapping? 
-                # Actually Pyrogram has direct download by file_id if we have the message or just path?
-                # Best way: get the message first. But we don't store message_id/chat_id.
-                # However, file_id is sufficient for download_media in newer Pyrogram.
-                
-                async for chunk in pyro_app.stream_media(file_id):
-                    yield chunk
+        channel_id = file_info.get('channel_id')
+        message_id = file_info.get('message_id')
 
-            # Bridge async generator to sync
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            gen = stream_file()
-            while True:
+        # --- Strategy 1: Use Pyrogram to download and serve the file ---
+        result = {}
+        error_holder = {}
+
+        def run_download():
+            async def _download():
                 try:
-                    chunk = loop.run_until_complete(anext(gen))
-                    yield chunk
-                except StopAsyncIteration:
-                    break
+                    client = indexer.get_client()
+                    async with client:
+                        if channel_id and message_id:
+                            # Best path: get original message and download from it
+                            msg = await client.get_messages(int(channel_id), int(message_id))
+                            path = await client.download_media(msg, file_name=f"/tmp/{file_id[:20]}")
+                        else:
+                            # Fallback: download directly by file_id
+                            path = await client.download_media(file_id, file_name=f"/tmp/{file_id[:20]}")
+                        result['path'] = path
                 except Exception as e:
-                    print(f"Streaming error: {e}")
-                    break
+                    error_holder['error'] = str(e)
+            asyncio.run(_download())
 
-        # Get the filename (clean version of movie title)
-        filename = f"{movie['title']} ({quality}).mp4".replace(" ", "_")
-        
-        return Response(generate(), 
-                        content_type='video/mp4',
-                        headers={"Content-Disposition": f"attachment; filename={filename}"})
+        t = threading.Thread(target=run_download)
+        t.start()
+        t.join(timeout=300)  # 5 min timeout for large files
+
+        if 'error' in error_holder:
+            return jsonify({"error": "Download Failed", "message": error_holder['error']}), 500
+
+        tmp_path = result.get('path')
+        if not tmp_path or not _os.path.exists(tmp_path):
+            return jsonify({"error": "Download Failed", "message": "File could not be retrieved from Telegram"}), 500
+
+        # Serve the file
+        file_size = _os.path.getsize(tmp_path)
+        # Determine MIME type from extension
+        ext = _os.path.splitext(tmp_path)[1].lower()
+        mime_map = {'.mkv': 'video/x-matroska', '.mp4': 'video/mp4', '.avi': 'video/x-msvideo', '.mov': 'video/quicktime'}
+        content_type = mime_map.get(ext, 'application/octet-stream')
+
+        # Build a clean filename
+        raw_name = f"{movie.get('title', 'movie')} ({quality}){ext}".replace(" ", "_").replace("/","_")
+
+        def generate_file():
+            try:
+                with open(tmp_path, 'rb') as f:
+                    while True:
+                        chunk = f.read(1024 * 256)  # 256KB chunks
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                try:
+                    _os.remove(tmp_path)
+                except Exception:
+                    pass
+
+        headers = {
+            "Content-Disposition": f"attachment; filename=\"{raw_name}\"",
+            "Content-Length": str(file_size),
+        }
+        return Response(generate_file(), content_type=content_type, headers=headers, direct_passthrough=True)
 
     except Exception as e:
+        print(f"Download error: {e}")
         return jsonify({"error": "Internal Error", "message": str(e)}), 500
 
 @app.route('/index', methods=['GET'])
@@ -197,8 +233,8 @@ def trigger_index():
             # Use the refined indexing function from indexer
             # We pass the shared movies_collection
             count = 0
-            # Note: We use a smaller limit for Vercel to avoid timeouts
-            safe_limit = min(limit, 200) 
+            # Note: We use a limit to avoid long-running requests on some platforms
+            safe_limit = min(limit, 500) 
             
             # Initialize indexer.app
             import indexer

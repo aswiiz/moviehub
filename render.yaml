@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: moviehub
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: MONGO_URI
+        fromContext: envVar
+      - key: TELEGRAM_API_ID
+        fromContext: envVar
+      - key: TELEGRAM_API_HASH
+        fromContext: envVar
+      - key: TELEGRAM_BOT_TOKEN
+        fromContext: envVar
+      - key: API_KEY
+        fromContext: envVar
+      - key: TELEGRAM_STRING_SESSION
+        fromContext: envVar

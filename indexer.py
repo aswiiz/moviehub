@@ -136,7 +136,16 @@ def process_message(message):
     file_id = message.document.file_id
     file_name = message.document.file_name
     file_size = message.document.file_size
+    channel_id = str(message.chat.id) if message.chat else None
+    message_id = message.id
+    
+    return process_file_info(file_id, file_name, file_size, channel_id=channel_id, message_id=message_id)
 
+def process_file_info(file_id, file_name, file_size, is_formatted=False, channel_id=None, message_id=None):
+    """
+    Processes file information and adds/updates it in the movies collection.
+    If is_formatted is True, file_size is treated as a pre-formatted string.
+    """
     # Check for duplicate file_id
     if movies_collection.find_one({"files.file_id": file_id}):
         print(f"Skipping duplicate file: {file_name}")
@@ -149,7 +158,7 @@ def process_message(message):
     quality = detect_quality(file_name)
     
     # 3. Format size
-    readable_size = format_size(file_size)
+    readable_size = file_size if is_formatted else format_size(file_size)
 
     # 4. IMDb Auto Match or Fallback
     # Check if movie already exists in DB to reuse poster/IMDb data
@@ -176,7 +185,9 @@ def process_message(message):
         "quality": quality,
         "file_id": file_id,
         "size": readable_size,
-        "default": False # Will set default logic later
+        "default": False,
+        "channel_id": channel_id,
+        "message_id": message_id
     }
 
     # 6. Insert or Update MongoDB
@@ -404,7 +415,7 @@ async def index_channel(chat_id, limit=None, offset_id=0):
             async for message in iter_messages(chat_id, limit=limit, offset=offset_id):
                 if message and not message.empty:
                     if message.document or message.video or message.audio:
-                        process_file_message(message)
+                        process_message(message)
                         count += 1
                         if count % 20 == 0:
                             print(f"Progress: Indexed {count} files...")
@@ -418,7 +429,7 @@ async def index_channel(chat_id, limit=None, offset_id=0):
             async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
                 if message and not message.empty:
                     if message.document or message.video or message.audio:
-                        process_file_message(message)
+                        process_message(message)
                         count += 1
                         if count % 20 == 0:
                             print(f"Progress: Indexed {count} files...")
