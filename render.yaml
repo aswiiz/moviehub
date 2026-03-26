@@ -19,3 +19,5 @@ services:
         fromContext: envVar
       - key: TELEGRAM_STRING_SESSION
         fromContext: envVar
+      - key: WEB_CONCURRENCY
+        value: "1"
