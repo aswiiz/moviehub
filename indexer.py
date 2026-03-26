@@ -376,15 +376,32 @@ async def handle_message(client, message):
 
                 if len(parts) > 1:
                     target_chat = parts[1]
-                    if len(parts) > 2:
-                        target_limit = int(parts[2])
+                    try:
+                        if len(parts) > 2:
+                            target_limit = int(parts[2])
+                    except ValueError:
+                        return await message.reply_text("❌ Invalid limit. Please provide a number.")
                 else:
                     target_chat = last_forwarded_chat.get(user_id)
                 
                 if not target_chat:
-                    return await message.reply_text("❌ No channel detected. Forward a message/file from a channel first, or use `/index <chat_id>`.")
+                    return await message.reply_text("❌ **No channel detected.**\n\n1. **Forward** a message/file from a channel to this bot.\n2. Then send `/index`.")
 
-                await message.reply_text(f"🚀 **Indexing Started**\nTarget: `{target_chat}`\n\nThis may take a moment...")
+                # Try to clean/convert chat ID
+                try:
+                   if isinstance(target_chat, str) and (target_chat.startswith("-100") or target_chat.isdigit()):
+                       target_chat = int(target_chat)
+                except: pass
+
+                await message.reply_text(f"🚀 **Indexing Started**\nTarget: `{target_chat}`\n\nChecking access...")
+                
+                # Check access before creating task
+                try:
+                    chat = await client.get_chat(target_chat)
+                    print(f"DEBUG: Found chat {chat.title} ({chat.id}) for indexing.")
+                except Exception as e:
+                    return await message.reply_text(f"❌ **Failed to access chat:** `{e}`\nMake sure the bot is an admin in the channel if it's a bot account.")
+
                 asyncio.create_task(index_channel(target_chat, limit=target_limit))
                 return
 
@@ -422,38 +439,20 @@ async def index_channel(chat_id, limit=None, offset_id=0):
         if config.ADMIN_ID:
             await app.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nTarget: `{chat_id}`\nMethod: Batch Retrieval")
 
-        # 2. Check if client is bot vs user
-        me = await app.get_me()
-        is_bot = me.is_bot if me else True
-        
-        if is_bot:
-            print(f"INFO: Running as BOT (@{getattr(me, 'username', 'Unknown')}). Using batch retrieval.")
-            async for message in iter_messages(chat_id, limit=limit, offset=offset_id):
-                if message and not message.empty:
-                    if message.document or message.video or message.audio:
-                        process_message(message)
-                        count += 1
-                        if count % 20 == 0:
-                            print(f"Progress: Indexed {count} files...")
-                        
-                        if count % 100 == 0 and config.ADMIN_ID:
-                            try:
-                                await app.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
-                            except: pass
-        else:
-            print(f"INFO: Running as USER ({me.first_name}). Using standard history crawl.")
-            async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
-                if message and not message.empty:
-                    if message.document or message.video or message.audio:
-                        process_message(message)
-                        count += 1
-                        if count % 20 == 0:
-                            print(f"Progress: Indexed {count} files...")
-                        
-                        if count % 100 == 0 and config.ADMIN_ID:
-                            try:
-                                await app.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
-                            except: pass
+        # Use get_chat_history for all accounts as it is more reliable
+        print(f"INFO: Crawling history for {chat_id} (Limit: {limit})...")
+        async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
+            if message and not message.empty:
+                if message.document or message.video or message.audio:
+                    process_message(message)
+                    count += 1
+                    if count % 20 == 0:
+                        print(f"Progress: Indexed {count} files...")
+                    
+                    if count % 100 == 0 and config.ADMIN_ID:
+                        try:
+                            await app.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
+                        except: pass
         
         print(f"Indexing complete. Processed {count} files.")
         
