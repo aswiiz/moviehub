@@ -11,12 +11,16 @@ from datetime import datetime, timezone
 
 # MongoDB Setup
 try:
-    client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=5000)
-    # Ping to check if host is valid
-    client.admin.command('ping')
+    mongo_uri = config.MONGO_URI
+    if not mongo_uri or mongo_uri == "CHANGEME":
+         mongo_uri = "mongodb://localhost:27017/moviehub"
+         
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    # Avoid blocking ping on import
+    # client.admin.command('ping')
     db = client.get_database()
 except Exception as e:
-    print(f"MongoDB Configuration Error: {e}")
+    print(f"MongoDB Configuration Error in Indexer: {e}")
     # Fallback/Dummy for initialization
     client = MongoClient() 
     db = client.moviehub

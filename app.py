@@ -10,45 +10,64 @@ import asyncio
 import os
 import indexer  # Import our indexing logic
 
+# Lazy initialization for Pyrogram Client
+_pyro_app = None
+
 app = Flask(__name__)
 CORS(app)
 
 # MongoDB Setup
 try:
-    client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=5000)
-    client.admin.command('ping')
+    mongo_uri = config.MONGO_URI
+    if not mongo_uri or mongo_uri == "CHANGEME":
+         print("WARNING: No valid MONGO_URI found. Falling back to local/default.")
+         mongo_uri = "mongodb://localhost:27017/moviehub"
+         
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    # Don't ping on import to avoid blocking gunicorn workers
+    # client.admin.command('ping') 
     db = client.get_database()
 except Exception as e:
     print(f"MongoDB Configuration Error: {e}")
     client = MongoClient()
     db = client.moviehub
+
 movies_collection = db.movies
 settings_collection = db.settings
 files_collection = db.files
 
-# Pyrogram Client for Streaming & Indexing
-# On Render/Production, we use a local session file. 
-# If you need persistence across redeploys, consider using TELEGRAM_STRING_SESSION.
-session_name = "moviehub_bot"
-
-# Support for Userbot (String Session)
-string_session = os.getenv("TELEGRAM_STRING_SESSION")
-
-if string_session:
-    print("Using TELEGRAM_STRING_SESSION for Userbot mode.")
-    pyro_app = Client(
-        "moviehub_userbot",
-        session_string=string_session,
-        api_id=config.TELEGRAM_API_ID,
-        api_hash=config.TELEGRAM_API_HASH
-    )
-else:
-    pyro_app = Client(
-        session_name,
-        api_id=config.TELEGRAM_API_ID,
-        api_hash=config.TELEGRAM_API_HASH,
-        bot_token=config.TELEGRAM_BOT_TOKEN
-    )
+def get_pyro_app():
+    global _pyro_app
+    if _pyro_app:
+        return _pyro_app
+        
+    session_name = "moviehub_bot"
+    string_session = os.getenv("TELEGRAM_STRING_SESSION")
+    
+    try:
+        if string_session:
+            print("Using TELEGRAM_STRING_SESSION for Userbot mode.")
+            _pyro_app = Client(
+                "moviehub_userbot",
+                session_string=string_session,
+                api_id=config.TELEGRAM_API_ID,
+                api_hash=config.TELEGRAM_API_HASH
+            )
+        else:
+            if not config.TELEGRAM_BOT_TOKEN or config.TELEGRAM_BOT_TOKEN == "CHANGEME":
+                print("WARNING: No TELEGRAM_BOT_TOKEN found. Pyrogram might fail.")
+                
+            _pyro_app = Client(
+                session_name,
+                api_id=config.TELEGRAM_API_ID,
+                api_hash=config.TELEGRAM_API_HASH,
+                bot_token=config.TELEGRAM_BOT_TOKEN
+            )
+    except Exception as e:
+        print(f"Pyrogram Initialization Error: {e}")
+        return None
+        
+    return _pyro_app
 
 def require_api_key(f):
     def decorated_function(*args, **kwargs):
@@ -96,8 +115,6 @@ def search():
         return jsonify(files)
 
     return jsonify([])
-
-    return jsonify(movies)
 
 @app.route('/file/<file_id>', methods=['GET'])
 @require_api_key
@@ -227,6 +244,10 @@ def trigger_index():
         # We need to use a separate pyro client for indexing to avoid conflict with streaming
         # but in serverless, we can just start/stop as needed.
         async def run_indexing():
+            pyro_app = get_pyro_app()
+            if not pyro_app:
+                 raise Exception("Could not initialize Pyrogram app.")
+                 
             if not pyro_app.is_connected:
                 await pyro_app.start()
             
@@ -237,7 +258,6 @@ def trigger_index():
             safe_limit = min(limit, 500) 
             
             # Initialize indexer.app
-            import indexer
             indexer.app = pyro_app
             
             # We slightly modify index_channel logic here to be more 'inline'
