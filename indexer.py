@@ -330,12 +330,15 @@ async def handle_message(client, message):
     """Handles search queries or forwarded messages for indexing with robust error catching."""
     try:
         # Logging basics
-        user_id = message.from_user.id if message.from_user else 'Unknown'
+        user_id = message.from_user.id if message.from_user else None
         text = message.text or ""
-        print(f"DEBUG: Processing message from {user_id}: {text[:50]}")
         
-        # Admin check for all sensitive operations
-        is_admin = (config.ADMIN_ID and user_id == config.ADMIN_ID)
+        # Robust Admin check
+        is_admin = False
+        if config.ADMIN_ID and user_id:
+            is_admin = (str(user_id) == str(config.ADMIN_ID))
+            
+        print(f"DEBUG: Message from {user_id} (Admin ID: {config.ADMIN_ID}, Match: {is_admin})")
         
         # 1. Detection of File/Channel for Indexing
         # Triggered when admin forwards a message from a channel OR sends a file directly (if not private chat)
