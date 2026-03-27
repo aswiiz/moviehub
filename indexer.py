@@ -38,47 +38,56 @@ files_collection = db.files
 # In-memory storage for last forwarded chat per user
 last_forwarded_chat = {}
 
-def get_client():
+# Global clients
+bot = None
+userbot = None
+
+def get_clients():
+    global bot, userbot
     is_vercel = os.getenv("VERCEL") == "1"
     session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
     
-    # 1. Try String Session (Userbot) if provided
+    # 1. Initialize Userbot (for indexing/crawling)
     string_session = getattr(config, 'TELEGRAM_STRING_SESSION', None)
     if string_session:
         try:
-            print("INFO: Starting with TELEGRAM_STRING_SESSION (Userbot mode)...")
-            client = Client(
+            print("INFO: Initializing Userbot with string session...")
+            userbot = Client(
                 "moviehub_userbot",
                 session_string=string_session,
                 api_id=config.TELEGRAM_API_ID,
-                api_hash=config.TELEGRAM_API_HASH
+                api_hash=config.TELEGRAM_API_HASH,
+                no_updates=True # We only need it for crawling
             )
-            return client
         except Exception as e:
             print(f"CRITICAL ERROR: Invalid STRING_SESSION: {e}")
-            print("Falling back to standard Bot login...")
-    else:
-        print("INFO: No STRING_SESSION found. Starting in Bot mode.")
-        
-    # 2. Check for bot token
+            userbot = None
+
+    # 2. Initialize Bot (for commands)
     bot_token = config.TELEGRAM_BOT_TOKEN
-    if not bot_token or bot_token == "CHANGEME":
-        print("NOTE: No Bot Token found. Switching to USERBOT mode (interactive login).")
-        return Client(
+    if bot_token and bot_token != "CHANGEME":
+        print("INFO: Initializing Bot Token client...")
+        bot = Client(
             session_name,
             api_id=config.TELEGRAM_API_ID,
-            api_hash=config.TELEGRAM_API_HASH
+            api_hash=config.TELEGRAM_API_HASH,
+            bot_token=bot_token
         )
+    else:
+        # If no bot token, use userbot as the main listener
+        print("NOTE: No Bot Token found. Commands will be handled by USERBOT.")
+        if userbot:
+            bot = userbot
+        else:
+            # Final fallback: interactive login
+            print("Switching to interactive USERBOT login.")
+            bot = Client(
+                session_name,
+                api_id=config.TELEGRAM_API_ID,
+                api_hash=config.TELEGRAM_API_HASH
+            )
     
-    return Client(
-        session_name,
-        api_id=config.TELEGRAM_API_ID,
-        api_hash=config.TELEGRAM_API_HASH,
-        bot_token=bot_token
-    )
-
-# Global client (will be initialized in main)
-app = None
+    return bot, userbot
 
 def clean_title(filename):
     """
@@ -365,12 +374,14 @@ async def handle_message(client, message):
 
                 await message.reply_text(f"🚀 **Indexing Started**\nTarget: `{target_chat}`\n\nChecking access...")
                 
-                # Check access before creating task
+        # Check access before creating task
                 try:
-                    chat = await client.get_chat(target_chat)
+                    # Use the userbot for check if available, it has better access
+                    access_client = userbot or client
+                    chat = await access_client.get_chat(target_chat)
                     print(f"DEBUG: Found chat {chat.title} ({chat.id}) for indexing.")
                 except Exception as e:
-                    return await message.reply_text(f"❌ **Failed to access chat:** `{e}`\nMake sure the bot is an admin in the channel if it's a bot account.")
+                    return await message.reply_text(f"❌ **Failed to access chat:** `{e}`\nMake sure the bot is an admin in the channel.")
 
                 asyncio.create_task(index_channel(target_chat, limit=target_limit))
                 return
@@ -406,12 +417,18 @@ async def index_channel(chat_id, limit=None, offset_id=0):
     count = 0
     print(f"DEBUG: Starting index_channel for {chat_id} (Limit: {limit})")
     try:
+        # Use the userbot for crawling if available, otherwise fallback to bot
+        crawler = userbot or bot
+        reporter = bot or userbot # Prefer bot for reporting
+        
         if config.ADMIN_ID:
-            await app.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nTarget: `{chat_id}`\nMethod: Batch Retrieval")
+            try:
+                await reporter.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nTarget: `{chat_id}`\nMethod: {'Userbot Crawl' if userbot else 'Bot API Crawl'}")
+            except: pass
 
         # Use get_chat_history for all accounts as it is more reliable
         print(f"INFO: Crawling history for {chat_id} (Limit: {limit})...")
-        async for message in app.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
+        async for message in crawler.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
             if message and not message.empty:
                 if message.document or message.video or message.audio:
                     process_message(message)
@@ -421,7 +438,7 @@ async def index_channel(chat_id, limit=None, offset_id=0):
                     
                     if count % 100 == 0 and config.ADMIN_ID:
                         try:
-                            await app.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
+                            await reporter.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
                         except: pass
         
         print(f"Indexing complete. Processed {count} files.")
@@ -429,7 +446,7 @@ async def index_channel(chat_id, limit=None, offset_id=0):
         # Notify admin if possible
         if config.ADMIN_ID:
             try:
-                await app.send_message(config.ADMIN_ID, f"✅ Indexing complete for ID: `{chat_id}`\nProcessed: **{count}** files.")
+                await reporter.send_message(config.ADMIN_ID, f"✅ Indexing complete for ID: `{chat_id}`\nProcessed: **{count}** files.")
             except Exception as e:
                 print(f"Failed to notify admin: {e}")
     except Exception as e:
@@ -441,11 +458,13 @@ async def index_channel(chat_id, limit=None, offset_id=0):
             
         print(f"Error during indexing {chat_id}: {e}")
         if config.ADMIN_ID:
-            await app.send_message(config.ADMIN_ID, error_msg)
+            try:
+                await reporter.send_message(config.ADMIN_ID, error_msg)
+            except: pass
 
 async def main():
     import sys
-    global app
+    global bot, userbot
     
     # 1. Validate configuration
     required = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_API_ID", "TELEGRAM_API_HASH", "MONGO_URI"]
@@ -455,12 +474,12 @@ async def main():
         print(f"CRITICAL ERROR: Missing environment variables: {', '.join(missing)}")
         sys.exit(1)
 
-    # 2. Initialize app inside the loop
-    app = get_client()
+    # 2. Initialize apps
+    bot, userbot = get_clients()
     
-    # 3. Register handlers
+    # 3. Register handlers to bot
     from pyrogram.handlers import MessageHandler
-    app.add_handler(MessageHandler(handle_message))
+    bot.add_handler(MessageHandler(handle_message))
 
     # 4. Handle command line arguments
     if len(sys.argv) > 1:
@@ -468,7 +487,7 @@ async def main():
         chat = sys.argv[1]
         try:
             # Try to convert to int if it looks like an ID
-            if chat.startswith("-100") or chat.isdigit():
+            if chat.startswith("-100") or (chat.isdigit() or (chat.startswith('-') and chat[1:].isdigit())):
                 chat = int(chat)
         except:
             pass
@@ -476,44 +495,31 @@ async def main():
         lim = int(sys.argv[2]) if len(sys.argv) > 2 else None
         off = int(sys.argv[3]) if len(sys.argv) > 3 else 0
         
-        async with app:
-            print(f"Starting DIRECT indexing for {chat}...")
-            await index_channel(chat, lim, off)
+        # In CLI mode, we start both if needed
+        async with bot:
+            if userbot and userbot != bot:
+                async with userbot:
+                    print(f"Starting DIRECT indexing for {chat} (Userbot mode)...")
+                    await index_channel(chat, lim, off)
+            else:
+                 print(f"Starting DIRECT indexing for {chat} (Bot mode)...")
+                 await index_channel(chat, lim, off)
     else:
-        print("Starting bot...")
+        print("Starting applications...")
         try:
-            await app.start()
-            print("Bot started. Listening for messages...")
+            await bot.start()
+            if userbot and userbot != bot:
+                await userbot.start()
+                print("Userbot started.")
+            
+            print("Chat Bot started. Listening for messages...")
             from pyrogram import idle
             await idle()
-            await app.stop()
+            
+            if userbot and userbot != bot: await userbot.stop()
+            await bot.stop()
         except Exception as e:
             print(f"FATAL STARTUP ERROR: {e}")
-            if "string_session" in str(e) or "unpack" in str(e):
-                print("Your TELEGRAM_STRING_SESSION may be invalid for this Pyrogram version.")
-            
-            # Final attempt to fallback if not already in bot mode
-            if not getattr(app, "bot_token", None) and config.TELEGRAM_BOT_TOKEN:
-                 print("Attempting final fallback to Bot Token mode...")
-                 try:
-                     # Create a fresh client for bot mode
-                     app = Client(
-                        "moviehub_bot_fallback",
-                        api_id=config.TELEGRAM_API_ID,
-                        api_hash=config.TELEGRAM_API_HASH,
-                        bot_token=config.TELEGRAM_BOT_TOKEN
-                     )
-                     from pyrogram.handlers import MessageHandler
-                     app.add_handler(MessageHandler(handle_message))
-                     await app.start()
-                     print("Bot started successfully in BOT TOKEN mode.")
-                     from pyrogram import idle
-                     await idle()
-                     await app.stop()
-                 except Exception as fallback_err:
-                     print(f"Fallback also failed: {fallback_err}")
-            else:
-                print("No further fallbacks possible. Please check your credentials.")
 
 if __name__ == "__main__":
     try:
