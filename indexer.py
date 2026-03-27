@@ -23,7 +23,7 @@ try:
     if not mongo_uri or mongo_uri == "CHANGEME":
          mongo_uri = "mongodb://localhost:27017/moviehub"
          
-    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=30000, connectTimeoutMS=30000, socketTimeoutMS=30000)
     # Avoid blocking ping on import
     # client.admin.command('ping')
     db = client.get_database()
