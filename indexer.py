@@ -42,16 +42,21 @@ def get_client():
     is_vercel = os.getenv("VERCEL") == "1"
     session_name = "/tmp/moviehub_bot" if is_vercel else "moviehub_bot"
     
-    # 1. Prioritize String Session (Userbot)
+    # 1. Try String Session (Userbot) if provided
     string_session = getattr(config, 'TELEGRAM_STRING_SESSION', None)
     if string_session:
-        print("Using TELEGRAM_STRING_SESSION for indexing client.")
-        return Client(
-            "moviehub_userbot",
-            session_string=string_session,
-            api_id=config.TELEGRAM_API_ID,
-            api_hash=config.TELEGRAM_API_HASH
-        )
+        try:
+            print("Using TELEGRAM_STRING_SESSION for indexing client...")
+            client = Client(
+                "moviehub_userbot",
+                session_string=string_session,
+                api_id=config.TELEGRAM_API_ID,
+                api_hash=config.TELEGRAM_API_HASH
+            )
+            return client
+        except Exception as e:
+            print(f"ERROR: Invalid TELEGRAM_STRING_SESSION: {e}")
+            print("Falling back to standard bot login...")
         
     # 2. Check for bot token
     bot_token = config.TELEGRAM_BOT_TOKEN
@@ -467,11 +472,40 @@ async def main():
             print(f"Starting DIRECT indexing for {chat}...")
             await index_channel(chat, lim, off)
     else:
-        print("Bot started. Listening for messages...")
-        await app.start()
-        from pyrogram import idle
-        await idle()
-        await app.stop()
+        print("Starting bot...")
+        try:
+            await app.start()
+            print("Bot started. Listening for messages...")
+            from pyrogram import idle
+            await idle()
+            await app.stop()
+        except Exception as e:
+            print(f"FATAL STARTUP ERROR: {e}")
+            if "string_session" in str(e) or "unpack" in str(e):
+                print("Your TELEGRAM_STRING_SESSION may be invalid for this Pyrogram version.")
+            
+            # Final attempt to fallback if not already in bot mode
+            if not getattr(app, "bot_token", None) and config.TELEGRAM_BOT_TOKEN:
+                 print("Attempting final fallback to Bot Token mode...")
+                 try:
+                     # Create a fresh client for bot mode
+                     app = Client(
+                        "moviehub_bot_fallback",
+                        api_id=config.TELEGRAM_API_ID,
+                        api_hash=config.TELEGRAM_API_HASH,
+                        bot_token=config.TELEGRAM_BOT_TOKEN
+                     )
+                     from pyrogram.handlers import MessageHandler
+                     app.add_handler(MessageHandler(handle_message))
+                     await app.start()
+                     print("Bot started successfully in BOT TOKEN mode.")
+                     from pyrogram import idle
+                     await idle()
+                     await app.stop()
+                 except Exception as fallback_err:
+                     print(f"Fallback also failed: {fallback_err}")
+            else:
+                print("No further fallbacks possible. Please check your credentials.")
 
 if __name__ == "__main__":
     try:
