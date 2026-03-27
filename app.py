@@ -285,9 +285,9 @@ def trigger_index():
             
             # We slightly modify index_channel logic here to be more 'inline'
             # Or just call the function if it's compatible
-            from indexer import iter_messages, process_message
-            async for message in iter_messages(chat_id, limit=safe_limit):
-                if message and not message.empty and message.document:
+            from indexer import process_message
+            async for message in pyro_app.get_chat_history(chat_id, limit=safe_limit):
+                if message and not message.empty and (message.document or message.video or message.audio):
                      process_message(message)
                      count += 1
             return count
