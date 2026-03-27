@@ -416,50 +416,93 @@ async def index_channel(chat_id, limit=None, offset_id=0):
     """Indexes full channel history or range using batch retrieval."""
     count = 0
     print(f"DEBUG: Starting index_channel for {chat_id} (Limit: {limit})")
-    try:
-        # Use the userbot for crawling if available, otherwise fallback to bot
-        crawler = userbot or bot
-        reporter = bot or userbot # Prefer bot for reporting
-        
-        if config.ADMIN_ID:
-            try:
-                await reporter.send_message(config.ADMIN_ID, f"🚀 **Indexing Started**\nTarget: `{chat_id}`\nMethod: {'Userbot Crawl' if userbot else 'Bot API Crawl'}")
-            except: pass
-
-        # Use get_chat_history for all accounts as it is more reliable
-        print(f"INFO: Crawling history for {chat_id} (Limit: {limit})...")
-        async for message in crawler.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
-            if message and not message.empty:
-                if message.document or message.video or message.audio:
+    
+    # 1. Using Userbot if available (Best Method)
+    if userbot:
+        try:
+            reporter = bot or userbot
+            if config.ADMIN_ID:
+                try: await reporter.send_message(config.ADMIN_ID, f"🚀 **Indexing Started (Userbot)**\nTarget: `{chat_id}`")
+                except: pass
+                
+            async for message in userbot.get_chat_history(chat_id, limit=limit, offset_id=offset_id):
+                if message and not message.empty and (message.document or message.video or message.audio):
                     process_message(message)
                     count += 1
-                    if count % 20 == 0:
-                        print(f"Progress: Indexed {count} files...")
-                    
-                    if count % 100 == 0 and config.ADMIN_ID:
-                        try:
-                            await reporter.send_message(config.ADMIN_ID, f"⏳ Indexing in progress...\nProcessed: **{count}** files.")
-                        except: pass
-        
-        print(f"Indexing complete. Processed {count} files.")
-        
-        # Notify admin if possible
-        if config.ADMIN_ID:
-            try:
-                await reporter.send_message(config.ADMIN_ID, f"✅ Indexing complete for ID: `{chat_id}`\nProcessed: **{count}** files.")
-            except Exception as e:
-                print(f"Failed to notify admin: {e}")
-    except Exception as e:
-        error_str = str(e)
-        if "BOT_METHOD_INVALID" in error_str:
-            error_msg = "❌ **Error: Indexing Failed.**\n\nTelegram restricts history indexing for Bot accounts. You **must** provide a `TELEGRAM_STRING_SESSION` (Userbot Session) in your `.env` file to crawl history."
-        else:
-            error_msg = f"❌ Error during indexing: {e}"
+                    if count % 20 == 0: print(f"Progress: Indexed {count} files...")
             
-        print(f"Error during indexing {chat_id}: {e}")
+            if config.ADMIN_ID:
+                try: await reporter.send_message(config.ADMIN_ID, f"✅ Indexing complete!\nProcessed: **{count}** files.")
+                except: pass
+            return
+        except Exception as e:
+            print(f"Userbot indexing failed: {e}")
+            # Fallback to Bot/Telethon below
+
+    # 2. Using Telethon for Bot Accounts (Reliable Fallback)
+    print("INFO: Initializing Telethon Fallback for Bot Indexing...")
+    from telethon import TelegramClient
+    
+    try:
+        # We start a temporary Telethon client
+        t_client = TelegramClient('moviehub_telethon', config.TELEGRAM_API_ID, config.TELEGRAM_API_HASH)
+        await t_client.start(bot_token=config.TELEGRAM_BOT_TOKEN)
+        
         if config.ADMIN_ID:
-            try:
-                await reporter.send_message(config.ADMIN_ID, error_msg)
+            try: await bot.send_message(config.ADMIN_ID, f"🚀 **Indexing Started (Bot-Fallback)**\nTarget: `{chat_id}`")
+            except: pass
+
+        # Get entity (chat)
+        entity = await t_client.get_entity(chat_id)
+        
+        async for message in t_client.iter_messages(entity, limit=limit, offset_id=offset_id):
+            if message and (message.document or message.video or message.audio):
+                # Prepare a message object similar to Pyrogram for process_message
+                # Or we can just extract what we need
+                file = message.document or message.video or message.audio
+                if not file: continue
+                
+                # Mock a Pyrogram-like file attribute
+                # Since process_message expects Pyrogram message/document, 
+                # we'll use process_file_info instead which is more generic
+                
+                # File ID for Telethon can be different, but we prefer Pyrogram IDs
+                # However, for indexing we just need the file basics
+                
+                # IMPORTANT: Since Telethon and Pyrogram use different file ID types,
+                # we must be careful. But for now we just want it to work.
+                # Actually, let's keep it simple: we want names and sizes.
+                
+                file_name = getattr(file, 'file_name', 'Untitled')
+                file_size = getattr(file, 'size', 0)
+                
+                # For download, we need the Pyrogram-compatible file_id.
+                # This is tricky because we can't easily convert them.
+                # BUT we can just use the message_id and chat_id to retrieve it later in Pyrogram.
+                
+                # We'll use a dummy/empty file_id for now and rely on channel_id/message_id
+                process_file_info(
+                    file_id=f"TL_{message.id}", 
+                    file_name=file_name, 
+                    file_size=file_size,
+                    channel_id=str(chat_id),
+                    message_id=message.id
+                )
+                count += 1
+                if count % 20 == 0:
+                    print(f"Progress (Telethon): Indexed {count} files...")
+        
+        await t_client.disconnect()
+        
+        if config.ADMIN_ID:
+            try: await bot.send_message(config.ADMIN_ID, f"✅ Indexing complete (Telethon)!\nProcessed: **{count}** files.")
+            except: pass
+
+    except Exception as e:
+        error_msg = f"❌ **Indexing Failed.**\n\nError: {e}\n\nTelegram often restricts Bot accounts from crawling history. Add `TELEGRAM_STRING_SESSION` to bypass this."
+        print(f"Error during bot indexing: {e}")
+        if config.ADMIN_ID:
+            try: await bot.send_message(config.ADMIN_ID, error_msg)
             except: pass
 
 async def main():
