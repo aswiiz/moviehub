@@ -31,8 +31,13 @@ async def index_handler(bot: Client, message: Message):
     duplicates = 0
     total = 0
 
+    indexing_client = getattr(bot, "user_client", None)
+    if not indexing_client:
+        await indexing_msg.edit_text("⚠️ **Warning:** No User Session found. Indexing via Bot token might fail.\nTo fix this, add `TELEGRAM_STRING_SESSION` to your `.env`.")
+        indexing_client = bot
+
     try:
-        async for msg in bot.get_chat_history(chat_id):
+        async for msg in indexing_client.get_chat_history(chat_id):
             total += 1
             if msg.media:
                 media = getattr(msg, msg.media.value)

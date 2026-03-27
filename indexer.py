@@ -46,7 +46,7 @@ def get_client():
     string_session = getattr(config, 'TELEGRAM_STRING_SESSION', None)
     if string_session:
         try:
-            print("Using TELEGRAM_STRING_SESSION for indexing client...")
+            print("INFO: Starting with TELEGRAM_STRING_SESSION (Userbot mode)...")
             client = Client(
                 "moviehub_userbot",
                 session_string=string_session,
@@ -55,8 +55,10 @@ def get_client():
             )
             return client
         except Exception as e:
-            print(f"ERROR: Invalid TELEGRAM_STRING_SESSION: {e}")
-            print("Falling back to standard bot login...")
+            print(f"CRITICAL ERROR: Invalid STRING_SESSION: {e}")
+            print("Falling back to standard Bot login...")
+    else:
+        print("INFO: No STRING_SESSION found. Starting in Bot mode.")
         
     # 2. Check for bot token
     bot_token = config.TELEGRAM_BOT_TOKEN
@@ -431,9 +433,15 @@ async def index_channel(chat_id, limit=None, offset_id=0):
             except Exception as e:
                 print(f"Failed to notify admin: {e}")
     except Exception as e:
+        error_str = str(e)
+        if "BOT_METHOD_INVALID" in error_str:
+            error_msg = "❌ **Error: Indexing Failed.**\n\nTelegram restricts history indexing for Bot accounts. You **must** provide a `TELEGRAM_STRING_SESSION` (Userbot Session) in your `.env` file to crawl history."
+        else:
+            error_msg = f"❌ Error during indexing: {e}"
+            
         print(f"Error during indexing {chat_id}: {e}")
         if config.ADMIN_ID:
-            await app.send_message(config.ADMIN_ID, f"❌ Error during indexing: {e}")
+            await app.send_message(config.ADMIN_ID, error_msg)
 
 async def main():
     import sys
